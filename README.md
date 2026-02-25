@@ -1,4 +1,4 @@
-# silag
+# SILAG
 
 A new Flutter project.
 
