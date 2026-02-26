@@ -1,6 +1,6 @@
 # SILAG
 
-A new Flutter project.
+An intelligent flood monitoring and early-warning system designed specifically for the flood-prone community.
 
 ## Getting Started
 
