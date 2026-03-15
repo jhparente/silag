@@ -46,7 +46,18 @@ class AuthService {
         // Pass the data and token to the UserModel
         return UserModel.fromJson(userData, token);
       } else {
-        final errorMessage = responseBody['message'] ?? 'Login failed';
+        final String code = (responseBody['code'] ?? '').toString();
+        final String errorMessage =
+            (responseBody['message'] ??
+                    responseBody['detail'] ??
+                    'Login failed')
+                .toString();
+
+        if (code == 'ACCOUNT_BANNED' ||
+            errorMessage.toLowerCase().contains('banned')) {
+          throw Exception('Account is banned. Contact the admin.');
+        }
+
         throw Exception(errorMessage);
       }
     } catch (e) {
@@ -58,7 +69,12 @@ class AuthService {
           errStr.contains('Network is unreachable')) {
         throw Exception('Network error occurred. Please try again later.');
       }
-      throw Exception('$e: Invalid mobile number or password');
+
+      if (errStr.toLowerCase().contains('banned')) {
+        throw Exception('Account is banned. Contact the admin.');
+      }
+
+      throw Exception(errStr.replaceAll('Exception: ', ''));
     }
   }
 

@@ -74,13 +74,15 @@ class ProfileService {
 
       final uri = Uri.parse('$baseUrl/users/$userId/profile');
       final request = http.MultipartRequest('PUT', uri);
+
       request.headers.addAll({
         'Authorization': 'Bearer $token',
         'Accept': 'application/json',
       });
 
-      if (username != null && username.isNotEmpty)
+      if (username != null && username.isNotEmpty) {
         request.fields['username'] = username;
+      }
       if (alertThreshold != null) {
         request.fields['alert_threshold'] = alertThreshold.toString();
       }
@@ -120,6 +122,42 @@ class ProfileService {
         );
       }
       rethrow;
+    }
+  }
+
+  // =========================================================================
+  // --- NEW: LOGOUT USER (Revoke JWT and Clear FCM Token) ---
+  // =========================================================================
+  // =========================================================================
+  // --- SECURE LOGOUT (Returns TRUE if backend succeeds, FALSE if it fails) ---
+  // =========================================================================
+  Future<bool> logoutUser() async {
+    try {
+      final token = await _storage.read(key: 'jwt_token');
+
+      // If there's no token, they are effectively already logged out locally
+      if (token == null) return true;
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/logout'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Accept': 'application/json',
+        },
+      );
+
+      // If Python returns 200 OK, the backend successfully cleared the tokens!
+      if (response.statusCode == 200) {
+        return true;
+      } else {
+        print(
+          "Backend failed to process logout. Status: ${response.statusCode}",
+        );
+        return false; // Backend failed (like your 500 error!)
+      }
+    } catch (e) {
+      print("Logout API network error: $e");
+      return false; // Network crashed
     }
   }
 }

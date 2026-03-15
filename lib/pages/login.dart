@@ -4,7 +4,9 @@ import '../services/auth_service.dart';
 import 'signup.dart';
 
 class Login extends StatefulWidget {
-  const Login({super.key});
+  final String? initialErrorMessage;
+
+  const Login({super.key, this.initialErrorMessage});
 
   @override
   State<Login> createState() => _LoginState();
@@ -18,6 +20,25 @@ class _LoginState extends State<Login> {
 
   bool _isLoading = false;
   bool _obscurePassword = true;
+  String? _inlineErrorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialErrorMessage != null &&
+        widget.initialErrorMessage!.isNotEmpty) {
+      _inlineErrorMessage = widget.initialErrorMessage;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(widget.initialErrorMessage!),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      });
+    }
+  }
 
   // --- LOGIN LOGIC ---
   Future<void> _handleLogin() async {
@@ -32,6 +53,7 @@ class _LoginState extends State<Login> {
     }
 
     setState(() => _isLoading = true);
+    setState(() => _inlineErrorMessage = null);
 
     try {
       // 2. Call your Python Backend!
@@ -58,11 +80,14 @@ class _LoginState extends State<Login> {
     } catch (e) {
       // 5. If Python throws an error (e.g., "Invalid username or password."), show it here!
       if (mounted) {
+        final errorText = e.toString().replaceAll('Exception: ', '');
+        if (errorText.toLowerCase().contains('banned')) {
+          setState(
+            () => _inlineErrorMessage = 'Account is banned. Contact the admin.',
+          );
+        }
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(e.toString().replaceAll('Exception: ', '')),
-            backgroundColor: Colors.redAccent,
-          ),
+          SnackBar(content: Text(errorText), backgroundColor: Colors.redAccent),
         );
       }
     } finally {
@@ -204,6 +229,19 @@ class _LoginState extends State<Login> {
                           ),
                   ),
                 ),
+                if (_inlineErrorMessage != null) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    _inlineErrorMessage!,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.redAccent,
+                      fontWeight: FontWeight.w600,
+                      fontFamily: 'Poppins',
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 30),
 
                 // --- SIGN UP PROMPT ---

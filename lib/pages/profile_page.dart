@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../models/profile_model.dart';
 import '../services/profile_service.dart';
-import 'subpages/edit_profile_page.dart'; // Make sure this import matches your file path!
+import 'subpages/edit_profile_page.dart'; // Adjust if your folder structure is slightly different
+import 'login.dart'; // Make sure this points to your actual login page file
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -21,6 +23,91 @@ class _ProfilePageState extends State<ProfilePage> {
   void initState() {
     super.initState();
     _profileFuture = _profileService.fetchUserProfile();
+  }
+
+  // --- SECURE LOGOUT LOGIC ---
+  Future<void> _handleLogout() async {
+    // 1. Show a confirmation dialog
+    bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text(
+          "Log Out",
+          style: TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Poppins'),
+        ),
+        content: const Text(
+          "Are you sure you want to log out of SILAG?",
+          style: TextStyle(fontFamily: 'Poppins'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false), // Cancel
+            child: const Text(
+              "Cancel",
+              style: TextStyle(color: Colors.grey, fontFamily: 'Poppins'),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true), // Confirm
+            child: const Text(
+              "Log Out",
+              style: TextStyle(
+                color: Colors.redAccent,
+                fontWeight: FontWeight.bold,
+                fontFamily: 'Poppins',
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    // 2. If they clicked "Log Out", execute the secure logout flow
+    if (confirm == true) {
+      // Show a loading spinner while waiting for Python
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(color: Colors.redAccent),
+        ),
+      );
+
+      // --- THIS IS THE STRICT HOOK ---
+      // Tell Python to delete the tokens. This will now return true or false.
+      bool backendSuccess = await _profileService.logoutUser();
+
+      // Close the loading spinner
+      if (mounted) Navigator.pop(context);
+
+      if (backendSuccess) {
+        // SUCCESS: Python successfully cleared the database. Now it is safe to clear the phone!
+        const storage = FlutterSecureStorage();
+        await storage.deleteAll();
+
+        if (mounted) {
+          // Redirect to Login Page and destroy the navigation history so they can't swipe back
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (context) => const Login()),
+            (route) => false,
+          );
+        }
+      } else {
+        // FAILED: The 500 error happened. Do NOT log them out.
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                "Server error: Could not securely log out. Please try again.",
+                style: TextStyle(fontFamily: 'Poppins'),
+              ),
+              backgroundColor: Colors.redAccent,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      }
+    }
   }
 
   @override
@@ -51,7 +138,6 @@ class _ProfilePageState extends State<ProfilePage> {
               final didUpdate = await Navigator.push(
                 context,
                 MaterialPageRoute(
-                  // We pass the current profile data so the edit screen has it
                   builder: (context) => EditProfilePage(
                     profile: _isSliderInitialized
                         ? snapshotData
@@ -151,6 +237,34 @@ class _ProfilePageState extends State<ProfilePage> {
 
                 // SLIDER UI (Locked)
                 _buildThresholdSlider(),
+
+                const SizedBox(height: 40),
+
+                // --- 4. LOGOUT BUTTON ---
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: _handleLogout,
+                    icon: const Icon(Icons.logout, color: Colors.redAccent),
+                    label: const Text(
+                      "Log Out",
+                      style: TextStyle(
+                        color: Colors.redAccent,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        fontFamily: 'Poppins',
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 15),
+                      side: const BorderSide(color: Colors.redAccent, width: 2),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(15),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 30),
               ],
             ),
           );

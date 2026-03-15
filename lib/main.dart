@@ -1,5 +1,4 @@
 import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:silag/firebase_options.dart';
@@ -14,6 +13,12 @@ Future<void> main() async {
 
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
+  // =========================================================================
+  // --- FIREBASE MESSAGING (COMMENTED OUT FOR CHROME/WEB TESTING) ---
+  // =========================================================================
+  // Uncomment this entire block when testing on a physical phone or emulator!
+
+  /*
   FirebaseMessaging messaging = FirebaseMessaging.instance;
   NotificationSettings settings = await messaging.requestPermission(
     alert: true,
@@ -25,6 +30,9 @@ Future<void> main() async {
 
   String? token = await messaging.getToken();
   print("🔥 FIREBASE DEVICE TOKEN: $token");
+  */
+
+  // =========================================================================
 
   runApp(const MyApp());
 }
