@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:silag/models/user_model.dart';
+import 'ban_check_service.dart';
 
 class AuthService {
   final String baseUrl = 'http://127.0.0.1:8000'; // web / USB run
@@ -42,6 +43,10 @@ class AuthService {
           key: 'user_id',
           value: userData['user_id']?.toString() ?? '',
         );
+
+        // Start the ban-check polling so a banned user is kicked out
+        // automatically even while the app is open.
+        BanCheckService().start();
 
         // Pass the data and token to the UserModel
         return UserModel.fromJson(userData, token);
@@ -109,6 +114,9 @@ class AuthService {
           value: userData['user_id']?.toString() ?? '',
         );
 
+        // Start ban-check polling for new accounts too.
+        BanCheckService().start();
+
         return UserModel.fromJson(userData, token);
       } else {
         final errorMessage = responseBody['message'] ?? 'Registration failed';
@@ -132,6 +140,8 @@ class AuthService {
   }
 
   Future<void> logout() async {
+    // Stop the background polling before clearing credentials.
+    BanCheckService().stop();
     await _storage.delete(key: 'jwt_token');
     await _storage.delete(key: 'user_id');
   }

@@ -5,6 +5,9 @@ import 'package:silag/firebase_options.dart';
 import 'package:silag/main_screen.dart';
 import 'pages/login.dart';
 import 'services/auth_service.dart';
+import 'services/ban_check_service.dart';
+
+final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -34,6 +37,14 @@ Future<void> main() async {
 
   // =========================================================================
 
+  // If the user already has a saved session (returning user), start ban-check
+  // polling immediately so a user who was banned while offline is kicked out
+  // as soon as they reopen the app.
+  final existingToken = await AuthService().getToken();
+  if (existingToken != null && existingToken.isNotEmpty) {
+    BanCheckService().start();
+  }
+
   runApp(const MyApp());
 }
 
@@ -47,11 +58,21 @@ class MyApp extends StatelessWidget {
       title: 'SILAG',
       theme: ThemeData(fontFamily: 'Poppins'),
 
-      // --- REPLACE HOME WITH THIS FUTUREBUILDER ---
+      navigatorKey: appNavigatorKey,
+
+      // Named routes for app-wide navigation.
+      routes: {
+        '/login': (context) {
+          final reason = ModalRoute.of(context)?.settings.arguments as String?;
+          return Login(initialErrorMessage: reason);
+        },
+        '/home': (context) => const MainScreen(),
+      },
+
       home: FutureBuilder<String?>(
-        future: AuthService().getToken(), // Check the secure vault for a token
+        future: AuthService().getToken(),
         builder: (context, snapshot) {
-          // 1. While checking storage (takes milliseconds), show a loading spinner
+          // While checking storage, show a loading spinner
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Scaffold(
               backgroundColor: Colors.white,
