@@ -1,7 +1,8 @@
 // ignore_for_file: deprecated_member_use of withOpacity
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
+// import 'package:flutter_svg/flutter_svg.dart';
 import 'package:intl/intl.dart';
+import 'package:silag/pages/profile_page.dart';
 import 'package:silag/services/sensor_service.dart';
 import 'package:silag/services/weather_service.dart';
 import 'package:silag/models/weather_model.dart';
@@ -530,7 +531,12 @@ class _HomePageState extends State<HomePage> {
         Row(
           children: [
             GestureDetector(
-              onTap: () {},
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const ProfilePage()),
+                );
+              },
               child: Container(
                 alignment: Alignment.center,
                 height: 35,
@@ -539,34 +545,11 @@ class _HomePageState extends State<HomePage> {
                   color: const Color(0xFFCCCCCC).withOpacity(0.1),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                padding: const EdgeInsets.all(5),
-                child: SvgPicture.asset(
-                  'assets/icons/notification-bell.svg',
-                  colorFilter: const ColorFilter.mode(
-                    Color(0xFF101C45),
-                    BlendMode.srcIn,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 10),
-            GestureDetector(
-              onTap: () {},
-              child: Container(
-                alignment: Alignment.center,
-                height: 35,
-                width: 35,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFCCCCCC).withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                padding: const EdgeInsets.all(8),
-                child: SvgPicture.asset(
-                  'assets/icons/menu.svg',
-                  colorFilter: const ColorFilter.mode(
-                    Color(0xFF101C45),
-                    BlendMode.srcIn,
-                  ),
+                padding: const EdgeInsets.all(1),
+                child: const Icon(
+                  Icons.person,
+                  color: Color(0xFF101C45),
+                  size: 20,
                 ),
               ),
             ),
@@ -578,9 +561,6 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
-// ========================================================
-//   NEW WIDGET: NEON SENSOR RING (Exactly like image)
-// ========================================================
 class NeonSensorRing extends StatelessWidget {
   final Color color;
   final double percentage;

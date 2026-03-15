@@ -22,13 +22,15 @@ class _SafetyPageState extends State<SafetyPage> {
   @override
   void initState() {
     super.initState();
-    _hotlinesFuture = _hotlineService.fetchHotlines();
+    // Fetch only global + personal hotlines
+    _hotlinesFuture = _hotlineService.fetchMyHotlines();
     _evacuationCentersFuture = _evacuationService.fetchEvacuationCenters();
   }
 
   void _refreshList() {
     setState(() {
-      _hotlinesFuture = _hotlineService.fetchHotlines();
+      _hotlinesFuture = _hotlineService.fetchMyHotlines();
+      _evacuationCentersFuture = _evacuationService.fetchEvacuationCenters();
     });
   }
 
@@ -43,8 +45,6 @@ class _SafetyPageState extends State<SafetyPage> {
       if (await canLaunchUrl(launchUri)) {
         await launchUrl(launchUri);
       } else {
-        // Fallback: try launching directly even if canLaunchUrl returns false
-        // This handles cases where query intents might be restrictive but launch still works
         if (!await launchUrl(launchUri)) {
           throw 'Could not launch $launchUri';
         }
@@ -88,7 +88,6 @@ class _SafetyPageState extends State<SafetyPage> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: appBar(),
-
       body: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(20, 10, 20, 120),
         child: Column(
@@ -133,10 +132,26 @@ class _SafetyPageState extends State<SafetyPage> {
                   );
                 }
                 if (snapshot.hasError) {
-                  return const Center(child: Text("Error loading contacts"));
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Text(
+                        "Error: ${snapshot.error}",
+                        style: const TextStyle(color: Colors.red, fontSize: 12),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  );
                 }
 
                 final hotlines = snapshot.data!;
+
+                if (hotlines.isEmpty) {
+                  return const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 20),
+                    child: Center(child: Text("No contacts found.")),
+                  );
+                }
 
                 return Column(
                   children: hotlines
@@ -171,13 +186,29 @@ class _SafetyPageState extends State<SafetyPage> {
                   );
                 }
                 if (snapshot.hasError) {
-                  return const Center(
-                    child: Text("Error loading evacuation centers"),
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Text(
+                        "Error: ${snapshot.error}",
+                        style: const TextStyle(color: Colors.red, fontSize: 12),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  );
+                }
+
+                final centers = snapshot.data ?? [];
+
+                if (centers.isEmpty) {
+                  return const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 20),
+                    child: Center(child: Text("No evacuation centers found.")),
                   );
                 }
 
                 return Column(
-                  children: snapshot.data!
+                  children: centers
                       .map((site) => _buildEvacuationCenterCard(site))
                       .toList(),
                 );
@@ -185,7 +216,7 @@ class _SafetyPageState extends State<SafetyPage> {
             ),
 
             const SizedBox(height: 35),
-            // --- 3. GUIDELINES ---
+            // --- GUIDELINES ---
             const Text(
               "Guidelines",
               style: TextStyle(
@@ -212,7 +243,6 @@ class _SafetyPageState extends State<SafetyPage> {
               _buildGuidelineBullet(
                 "Charge devices: Fully charge mobile phones, power banks, and emergency lights.",
               ),
-
               _buildGuidelineStep(
                 "2. Manage Utilities (Electricity, Water, Gas)",
               ),
@@ -228,7 +258,6 @@ class _SafetyPageState extends State<SafetyPage> {
               _buildGuidelineBullet(
                 "Store clean water in containers/bathtubs in case water services are cut.",
               ),
-
               _buildGuidelineStep("3. Monitor Official Updates"),
               _buildGuidelineBullet(
                 "Tune in: Listen to battery-operated radios or check social media (PAGASA, NDRRMC).",
@@ -244,7 +273,6 @@ class _SafetyPageState extends State<SafetyPage> {
               ),
             ]),
 
-            // TILE 2: FLOOD SAFETY (Placeholder structure)
             _buildGuidelineTile("II. Flood Safety Protocols", [
               _buildGuidelineStep("1. During Evacuation"),
               _buildGuidelineBullet("Move to higher ground immediately."),
@@ -260,7 +288,6 @@ class _SafetyPageState extends State<SafetyPage> {
               ),
             ]),
 
-            // TILE 3: GO BAG (Placeholder structure)
             _buildGuidelineTile("III. Emergency \"Go Bag\" Checklist", [
               _buildGuidelineBullet(
                 "Drinking water and non-perishable food (3-day supply).",
@@ -289,7 +316,7 @@ class _SafetyPageState extends State<SafetyPage> {
           style: const TextStyle(
             color: Color(0xFF101C45),
             fontWeight: FontWeight.bold,
-            fontSize: 14, // Slightly larger for headers
+            fontSize: 14,
             fontFamily: 'Poppins',
           ),
         ),
@@ -315,7 +342,7 @@ class _SafetyPageState extends State<SafetyPage> {
         text,
         style: const TextStyle(
           color: Color(0xFF101C45),
-          fontWeight: FontWeight.w600, // Semi-bold
+          fontWeight: FontWeight.w600,
           fontSize: 13,
           fontFamily: 'Poppins',
         ),
@@ -325,7 +352,7 @@ class _SafetyPageState extends State<SafetyPage> {
 
   Widget _buildGuidelineBullet(String text) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 6, left: 10), // Indent bullet
+      padding: const EdgeInsets.only(bottom: 6, left: 10),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -339,7 +366,7 @@ class _SafetyPageState extends State<SafetyPage> {
               style: const TextStyle(
                 color: Colors.black87,
                 fontSize: 12,
-                height: 1.4, // Better readability
+                height: 1.4,
                 fontFamily: 'Poppins',
               ),
             ),
@@ -371,21 +398,21 @@ class _SafetyPageState extends State<SafetyPage> {
             width: double.infinity,
             decoration: BoxDecoration(
               color: Colors.grey[800],
-              border: Border(
-                top: const BorderSide(color: Color(0xFF101C45), width: 8),
-                left: const BorderSide(color: Color(0xFF101C45), width: 8),
-                right: const BorderSide(color: Color(0xFF101C45), width: 8),
+              border: const Border(
+                top: BorderSide(color: Color(0xFF101C45), width: 8),
+                left: BorderSide(color: Color(0xFF101C45), width: 8),
+                right: BorderSide(color: Color(0xFF101C45), width: 8),
               ),
               borderRadius: const BorderRadius.vertical(
                 top: Radius.circular(20),
               ),
-              image: DecorationImage(
-                image: NetworkImage(site.imageUrl),
-                fit: BoxFit.cover,
-                onError: (exception, stackTrace) {
-                  // Handle image loading error, e.g. show a placeholder
-                },
-              ),
+              image: site.evacuationImageUrl.isNotEmpty
+                  ? DecorationImage(
+                      image: NetworkImage(site.evacuationImageUrl),
+                      fit: BoxFit.cover,
+                      onError: (exception, stackTrace) {},
+                    )
+                  : null,
             ),
           ),
           Padding(
@@ -398,7 +425,7 @@ class _SafetyPageState extends State<SafetyPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        site.location,
+                        site.name,
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 14,
@@ -554,6 +581,7 @@ class _SafetyPageState extends State<SafetyPage> {
             onPressed: () async {
               if (nameController.text.isNotEmpty &&
                   numberController.text.isNotEmpty) {
+                // Capitalize the name logic
                 String rawName = nameController.text;
                 String capitalizedName = rawName
                     .split(' ')
@@ -563,12 +591,27 @@ class _SafetyPageState extends State<SafetyPage> {
                           : '',
                     )
                     .join(' ');
-                await _hotlineService.addHotline(
-                  capitalizedName,
-                  numberController.text,
-                );
-                _refreshList();
-                if (context.mounted) Navigator.pop(context);
+
+                // Wrapped in a try/catch to handle network errors safely
+                try {
+                  await _hotlineService.addLocalHotline(
+                    capitalizedName,
+                    numberController.text,
+                  );
+                  _refreshList(); // Fetch the newly updated list
+                  if (context.mounted) Navigator.pop(context); // Close dialog
+                } catch (e) {
+                  if (context.mounted) {
+                    // Show a popup if the backend rejects it or Wi-Fi is down
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          e.toString().replaceAll('Exception: ', ''),
+                        ),
+                      ),
+                    );
+                  }
+                }
               }
             },
             child: const Text("Add", style: TextStyle(color: Colors.white)),

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1009598448782",
+    "project_id": "silag-30cc3",
+    "storage_bucket": "silag-30cc3.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1009598448782:android:ab6f41740aee4e06d3b5df",
+        "android_client_info": {
+          "package_name": "com.example.silag"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAA8m_16_n1eap8CDC3I3aIJTnks7gh_r4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
