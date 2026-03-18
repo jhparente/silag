@@ -1,6 +1,6 @@
 import 'dart:async';
-import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'api_client.dart';
 
 class BanCheckService {
   static final BanCheckService _instance = BanCheckService._internal();
@@ -9,6 +9,8 @@ class BanCheckService {
 
   final String _baseUrl = 'http://127.0.0.1:8000';
   final _storage = const FlutterSecureStorage();
+  // Must use ApiClient so the 403 response gets intercepted and triggers logout
+  final _client = ApiClient();
 
   Timer? _timer;
 
@@ -25,18 +27,16 @@ class BanCheckService {
   Future<void> _check() async {
     try {
       final userId = await _storage.read(key: 'user_id');
-      final token = await _storage.read(key: 'jwt_token');
       if (userId == null) {
         stop();
         return;
       }
-      await http.get(
-        Uri.parse('$_baseUrl/users/$userId/profile'),
-        headers: {
-          'Accept': 'application/json',
-          if (token != null) 'Authorization': 'Bearer $token',
-        },
-      );
-    } catch (_) {}
+      // ApiClient.get() will call _handleBanCheck on the response.
+      // If the account is banned, it will automatically clear storage
+      // and navigate to /login. No extra handling needed here.
+      await _client.get(Uri.parse('$_baseUrl/users/$userId/profile'));
+    } catch (_) {
+      // Silently ignore network errors — only act on 403 ACCOUNT_BANNED
+    }
   }
 }

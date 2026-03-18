@@ -11,6 +11,18 @@ class AuthService {
 
   final _storage = const FlutterSecureStorage();
 
+  String _normalizeToken(String token) {
+    final trimmed = token.trim();
+    if (trimmed.toLowerCase().startsWith('bearer ')) {
+      return trimmed.substring(7).trim();
+    }
+    return trimmed;
+  }
+
+  String _extractUserId(Map<String, dynamic> userData) {
+    return (userData['user_id'] ?? userData['id'] ?? '').toString();
+  }
+
   Future<UserModel> login({
     required String mobileNumber,
     required String password,
@@ -37,19 +49,18 @@ class AuthService {
           throw Exception('Invalid response from server. Please try again.');
         }
 
-        // Store the token and user_id securely
-        await _storage.write(key: 'jwt_token', value: token);
-        await _storage.write(
-          key: 'user_id',
-          value: userData['user_id']?.toString() ?? '',
-        );
+        final normalizedToken = _normalizeToken(token);
+
+        // Store a normalized token and user_id securely.
+        await _storage.write(key: 'jwt_token', value: normalizedToken);
+        await _storage.write(key: 'user_id', value: _extractUserId(userData));
 
         // Start the ban-check polling so a banned user is kicked out
         // automatically even while the app is open.
         BanCheckService().start();
 
-        // Pass the data and token to the UserModel
-        return UserModel.fromJson(userData, token);
+        // Pass normalized token to the UserModel.
+        return UserModel.fromJson(userData, normalizedToken);
       } else {
         final String code = (responseBody['code'] ?? '').toString();
         final String errorMessage =
@@ -107,17 +118,15 @@ class AuthService {
       if (response.statusCode == 200 && responseBody['status'] == 'success') {
         final String token = responseBody['access_token'];
         final Map<String, dynamic> userData = responseBody['data'];
+        final normalizedToken = _normalizeToken(token);
 
-        await _storage.write(key: 'jwt_token', value: token);
-        await _storage.write(
-          key: 'user_id',
-          value: userData['user_id']?.toString() ?? '',
-        );
+        await _storage.write(key: 'jwt_token', value: normalizedToken);
+        await _storage.write(key: 'user_id', value: _extractUserId(userData));
 
         // Start ban-check polling for new accounts too.
         BanCheckService().start();
 
-        return UserModel.fromJson(userData, token);
+        return UserModel.fromJson(userData, normalizedToken);
       } else {
         final errorMessage = responseBody['message'] ?? 'Registration failed';
         throw Exception(errorMessage);
@@ -136,7 +145,14 @@ class AuthService {
   }
 
   Future<String?> getToken() async {
-    return await _storage.read(key: 'jwt_token');
+    final token = await _storage.read(key: 'jwt_token');
+    if (token == null) return null;
+
+    final normalizedToken = _normalizeToken(token);
+    if (normalizedToken != token) {
+      await _storage.write(key: 'jwt_token', value: normalizedToken);
+    }
+    return normalizedToken;
   }
 
   Future<void> logout() async {

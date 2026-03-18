@@ -157,7 +157,7 @@ class ProfileService {
       }
     } catch (e) {
       print("Logout API network error: $e");
-      return false; // Network crashed
+      return false;
     }
   }
 }
