@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'api_config.dart';
 import '../models/profile_model.dart';
 
 class ProfileService {
@@ -9,8 +10,19 @@ class ProfileService {
   factory ProfileService() => _instance;
   ProfileService._internal();
 
-  final String baseUrl = 'http://127.0.0.1:8000';
   final _storage = const FlutterSecureStorage();
+
+  Uri _buildUri(
+    String path, {
+    String? version,
+    Map<String, dynamic>? queryParameters,
+  }) {
+    return ApiConfig.uri(
+      path,
+      version: version,
+      queryParameters: queryParameters,
+    );
+  }
 
   Future<ProfileModel> fetchUserProfile() async {
     try {
@@ -22,7 +34,7 @@ class ProfileService {
       }
 
       final response = await http.get(
-        Uri.parse('$baseUrl/users/$userId/profile'),
+        _buildUri('users/$userId/profile'),
         headers: {
           'Authorization': 'Bearer $token',
           'Accept': 'application/json',
@@ -72,7 +84,7 @@ class ProfileService {
         throw Exception('Please log in.');
       }
 
-      final uri = Uri.parse('$baseUrl/users/$userId/profile');
+      final uri = _buildUri('users/$userId/profile');
       final request = http.MultipartRequest('PUT', uri);
 
       request.headers.addAll({
@@ -139,7 +151,7 @@ class ProfileService {
       if (token == null) return true;
 
       final response = await http.post(
-        Uri.parse('$baseUrl/logout'),
+        _buildUri('logout'),
         headers: {
           'Authorization': 'Bearer $token',
           'Accept': 'application/json',

@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'api_config.dart';
 import '../models/hotline_model.dart'; // Adjust path if needed
 
 class HotlineService {
@@ -8,8 +9,19 @@ class HotlineService {
   factory HotlineService() => _instance;
   HotlineService._internal();
 
-  final String baseUrl = 'http://127.0.0.1:8000';
   final _storage = const FlutterSecureStorage();
+
+  Uri _buildUri(
+    String path, {
+    String? version,
+    Map<String, dynamic>? queryParameters,
+  }) {
+    return ApiConfig.uri(
+      path,
+      version: version,
+      queryParameters: queryParameters,
+    );
+  }
 
   // --- FETCH USER HOTLINES ---
   Future<List<HotlineModel>> fetchMyHotlines() async {
@@ -23,7 +35,7 @@ class HotlineService {
 
       // Calls your brand new endpoint!
       final response = await http.get(
-        Uri.parse('$baseUrl/user_hotline?owner_id=$userId'),
+        _buildUri('user_hotline', queryParameters: {'owner_id': userId}),
         headers: {
           'Authorization': 'Bearer $token',
           'Accept': 'application/json',
@@ -61,7 +73,7 @@ class HotlineService {
       }
 
       final response = await http.post(
-        Uri.parse('$baseUrl/add_local_hotline'),
+        _buildUri('add_local_hotline'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',

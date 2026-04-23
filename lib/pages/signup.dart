@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:silag/main_screen.dart'; // Make sure this path is correct for your app!
 import '../services/auth_service.dart';
 
@@ -20,15 +22,84 @@ class _SignupState extends State<Signup> {
   bool _isLoading = false;
   bool _obscurePassword = true;
   bool _obscureConfirm = true;
+  bool _isLocating = false;
+  double? _latitude;
+  double? _longitude;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _getCurrentLocation(silentErrors: true);
+    });
+  }
+
+  void _handleMobileChanged(String value) {
+    if (!value.startsWith('0')) return;
+
+    final updated = value.replaceFirst(RegExp(r'^0+'), '');
+    _mobileController.value = TextEditingValue(
+      text: updated,
+      selection: TextSelection.collapsed(offset: updated.length),
+    );
+  }
+
+  Future<void> _getCurrentLocation({bool silentErrors = false}) async {
+    if (_isLocating) return;
+
+    setState(() => _isLocating = true);
+
+    try {
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+
+      if (permission == LocationPermission.deniedForever ||
+          permission == LocationPermission.denied) {
+        throw Exception('Location permission denied.');
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+        ),
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _latitude = position.latitude;
+        _longitude = position.longitude;
+      });
+    } catch (e) {
+      if (!mounted || silentErrors) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not get location: $e')));
+    } finally {
+      if (mounted) setState(() => _isLocating = false);
+    }
+  }
 
   // --- SIGNUP LOGIC ---
   Future<void> _handleSignup() async {
+    final mobileDigits = _mobileController.text.trim();
+
     // 1. Basic validation
     if (_usernameController.text.isEmpty ||
-        _mobileController.text.isEmpty ||
+        mobileDigits.isEmpty ||
         _passwordController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Please fill in all fields.")),
+      );
+      return;
+    }
+
+    if (mobileDigits.length != 10 || !mobileDigits.startsWith('9')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Enter a valid PH mobile number (9XXXXXXXXX).'),
+        ),
       );
       return;
     }
@@ -40,6 +111,10 @@ class _SignupState extends State<Signup> {
       return;
     }
 
+    if (_latitude == null || _longitude == null) {
+      await _getCurrentLocation(silentErrors: true);
+    }
+
     setState(() => _isLoading = true);
 
     try {
@@ -47,8 +122,10 @@ class _SignupState extends State<Signup> {
       // This will automatically save the access_token inside the service!
       final user = await _authService.register(
         username: _usernameController.text.trim(),
-        mobileNumber: _mobileController.text.trim(),
+        mobileNumber: '+63$mobileDigits',
         password: _passwordController.text.trim(),
+        latitude: _latitude,
+        longitude: _longitude,
       );
 
       // 3. Success! Show a welcome message
@@ -143,10 +220,61 @@ class _SignupState extends State<Signup> {
                 TextField(
                   controller: _mobileController,
                   keyboardType: TextInputType.phone,
-                  decoration: _inputDecoration(
-                    hint: "e.g. 09222222222",
-                    prefixIcon: Icons.phone_android,
-                  ),
+                  onChanged: _handleMobileChanged,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(10),
+                  ],
+                  decoration:
+                      _inputDecoration(
+                        hint: "9XXXXXXXXX",
+                        prefixIcon: Icons.phone_android,
+                      ).copyWith(
+                        prefixText: '+63 ',
+                        prefixStyle: const TextStyle(
+                          color: Color(0xFF101C45),
+                          fontWeight: FontWeight.w600,
+                          fontFamily: 'Poppins',
+                        ),
+                      ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Icon(
+                      Icons.my_location,
+                      size: 18,
+                      color: _isLocating
+                          ? Colors.orange
+                          : const Color(0xFF101C45),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _isLocating
+                            ? 'Getting your location...'
+                            : (_latitude != null && _longitude != null)
+                            ? 'Lat: ${_latitude!.toStringAsFixed(6)}, Lng: ${_longitude!.toStringAsFixed(6)}'
+                            : 'Location not available',
+                        style: TextStyle(
+                          color: Colors.grey[700],
+                          fontFamily: 'Poppins',
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: _isLocating ? null : _getCurrentLocation,
+                      child: const Text(
+                        'Refresh',
+                        style: TextStyle(
+                          fontFamily: 'Poppins',
+                          color: Color(0xFF101C45),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 20),
 

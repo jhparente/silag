@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:silag/models/community_status_model.dart';
+import 'api_config.dart';
 
 class CommunityStatusServices {
   static final CommunityStatusServices _instance =
@@ -9,8 +10,19 @@ class CommunityStatusServices {
   factory CommunityStatusServices() => _instance;
   CommunityStatusServices._internal();
 
-  final String baseUrl = '127.0.0.1:8000';
   final _storage = FlutterSecureStorage();
+
+  Uri _buildUri(
+    String path, {
+    String? version,
+    Map<String, dynamic>? queryParameters,
+  }) {
+    return ApiConfig.uri(
+      path,
+      version: version,
+      queryParameters: queryParameters,
+    );
+  }
 
   Future<CommunitySafetyStatus> fetchCommunitySafetyStatus() async {
     try {
@@ -20,7 +32,7 @@ class CommunityStatusServices {
       }
 
       final response = await http.get(
-        Uri.parse('http://$baseUrl/get_community_status'),
+        _buildUri('get_community_status'),
         headers: {
           'Authorization': 'Bearer $token',
           'Accept': 'application/json',
@@ -56,7 +68,7 @@ class CommunityStatusServices {
       }
 
       final response = await http.post(
-        Uri.parse('http://$baseUrl/cast_safety_status_vote'),
+        _buildUri('cast_safety_status_vote'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',

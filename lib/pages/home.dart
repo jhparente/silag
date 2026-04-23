@@ -119,6 +119,201 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  Color _sensorPrimaryColor(SensorModel sensor) {
+    if (sensor.type == SensorType.ultrasonic) {
+      if (sensor.waterLevel >= 3.0) return Colors.redAccent;
+      if (sensor.waterLevel >= 2.0) return Colors.orangeAccent;
+      if (sensor.waterLevel >= 1.0) return Colors.yellowAccent;
+      return Colors.greenAccent;
+    }
+
+    return sensor.isRising ? Colors.redAccent : Colors.greenAccent;
+  }
+
+  void _showSensorDetails(SensorModel sensor) {
+    final isUltrasonic = sensor.type == SensorType.ultrasonic;
+    final statusColor = _sensorPrimaryColor(sensor);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
+              decoration: BoxDecoration(
+                color: const Color(0xFF101C45),
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [
+                  BoxShadow(
+                    color: statusColor.withOpacity(0.25),
+                    blurRadius: 22,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 44,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: Colors.white24,
+                          borderRadius: BorderRadius.circular(100),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: statusColor.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Icon(
+                            isUltrasonic ? Icons.flood : Icons.sensors,
+                            color: statusColor,
+                            size: 24,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                sensor.name,
+                                style: const TextStyle(
+                                  fontFamily: 'Poppins',
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                sensor.location,
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 12,
+                                  fontFamily: 'Poppins',
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 18),
+                    _buildSensorDetailTile(
+                      label: 'Sensor ID',
+                      value: sensor.id.isEmpty ? 'N/A' : sensor.id,
+                    ),
+                    _buildSensorDetailTile(
+                      label: 'Sensor Type',
+                      value: isUltrasonic ? 'Ultrasonic' : 'Float',
+                    ),
+                    _buildSensorDetailTile(
+                      label: 'Status',
+                      value: sensor.status,
+                    ),
+                    if (isUltrasonic)
+                      _buildSensorDetailTile(
+                        label: 'Current Water Level',
+                        value: '${sensor.waterLevel.toStringAsFixed(2)} m',
+                      )
+                    else
+                      _buildSensorDetailTile(
+                        label: 'Float Trend',
+                        value: sensor.isRising ? 'Rising' : 'Stable',
+                      ),
+                    _buildSensorDetailTile(
+                      label: 'Last Refreshed',
+                      value: DateFormat(
+                        'MMM d, y - h:mm a',
+                      ).format(DateTime.now()),
+                    ),
+                    const SizedBox(height: 14),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () => Navigator.pop(context),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: statusColor.withOpacity(0.18),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: const Text(
+                          'Close',
+                          style: TextStyle(fontFamily: 'Poppins'),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildSensorDetailTile({
+    required String label,
+    required String value,
+  }) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF16224A),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            flex: 4,
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 12,
+                fontFamily: 'Poppins',
+              ),
+            ),
+          ),
+          Expanded(
+            flex: 5,
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                fontFamily: 'Poppins',
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   // Sensor Card
   Widget _buildSensorCard(SensorModel sensor) {
     Color statusColor;
@@ -181,111 +376,141 @@ class _HomePageState extends State<HomePage> {
       displayValue = 'N/A';
     }
 
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: const Color(0xFF16224A),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: statusColor.withOpacity(glowIntensity),
-            blurRadius: 15,
-            offset: const Offset(0, 5),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Text(
-                    sensor.location,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Icon(statusIcon, color: Colors.white, size: 35),
-                  const SizedBox(width: 10),
-                  if (sensor.type == SensorType.float)
-                    Text(
-                      displayStatus,
-                      style: TextStyle(
-                        color: statusColor,
-                        fontWeight: FontWeight.w500,
-                        fontSize: 16,
-                      ),
-                    )
-                  else
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Text(
-                              '$floodDescription - ',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w500,
-                                fontSize: 14,
-                              ),
-                            ),
-                            Text(
-                              sensor.status,
-                              style: TextStyle(
-                                color: statusColor,
-                                fontWeight: FontWeight.w500,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            Text(
-                              'Flood Level: ',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w500,
-                                fontSize: 14,
-                              ),
-                            ),
-                            Text(
-                              displayValue,
-                              style: TextStyle(
-                                color: statusColor,
-                                fontWeight: FontWeight.w500,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                ],
+        onTap: () => _showSensorDetails(sensor),
+        child: Container(
+          margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: const Color(0xFF16224A),
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: statusColor.withOpacity(glowIntensity),
+                blurRadius: 15,
+                offset: const Offset(0, 5),
               ),
             ],
           ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            sensor.location,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Icon(
+                          Icons.open_in_new_rounded,
+                          size: 14,
+                          color: Colors.white.withOpacity(0.7),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      sensor.name,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontWeight: FontWeight.w500,
+                        fontSize: 11,
+                        fontFamily: 'Poppins',
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Icon(statusIcon, color: Colors.white, size: 35),
+                        const SizedBox(width: 10),
+                        if (sensor.type == SensorType.float)
+                          Text(
+                            displayStatus,
+                            style: TextStyle(
+                              color: statusColor,
+                              fontWeight: FontWeight.w500,
+                              fontSize: 16,
+                            ),
+                          )
+                        else
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Text(
+                                    '$floodDescription - ',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w500,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                  Text(
+                                    sensor.status,
+                                    style: TextStyle(
+                                      color: statusColor,
+                                      fontWeight: FontWeight.w500,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              Row(
+                                children: [
+                                  const Text(
+                                    'Flood Level: ',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w500,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                  Text(
+                                    displayValue,
+                                    style: TextStyle(
+                                      color: statusColor,
+                                      fontWeight: FontWeight.w500,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
 
-          // Sensor Progress Bar
-          NeonSensorRing(
-            color: statusColor,
-            percentage: fillPercentage,
-            size: 50,
+              // Sensor Progress Bar
+              NeonSensorRing(
+                color: statusColor,
+                percentage: fillPercentage,
+                size: 50,
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }

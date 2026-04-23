@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:silag/main_screen.dart'; // Import your MainScreen here
 import '../services/auth_service.dart';
 import 'signup.dart';
@@ -22,6 +23,16 @@ class _LoginState extends State<Login> {
   bool _obscurePassword = true;
   String? _inlineErrorMessage;
 
+  void _handleMobileChanged(String value) {
+    if (!value.startsWith('0')) return;
+
+    final updated = value.replaceFirst(RegExp(r'^0+'), '');
+    _mobileController.value = TextEditingValue(
+      text: updated,
+      selection: TextSelection.collapsed(offset: updated.length),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -42,11 +53,22 @@ class _LoginState extends State<Login> {
 
   // --- LOGIN LOGIC ---
   Future<void> _handleLogin() async {
+    final mobileDigits = _mobileController.text.trim();
+
     // 1. Basic validation
-    if (_mobileController.text.isEmpty || _passwordController.text.isEmpty) {
+    if (mobileDigits.isEmpty || _passwordController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text("Please enter both mobile number and password."),
+        ),
+      );
+      return;
+    }
+
+    if (mobileDigits.length != 10 || !mobileDigits.startsWith('9')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Enter a valid PH mobile number (9XXXXXXXXX).'),
         ),
       );
       return;
@@ -58,7 +80,7 @@ class _LoginState extends State<Login> {
     try {
       // 2. Call your Python Backend!
       final user = await _authService.login(
-        mobileNumber: _mobileController.text.trim(),
+        mobileNumber: '+63$mobileDigits',
         password: _passwordController.text.trim(),
       );
 
@@ -146,10 +168,23 @@ class _LoginState extends State<Login> {
                 TextField(
                   controller: _mobileController,
                   keyboardType: TextInputType.phone,
-                  decoration: _inputDecoration(
-                    hint: "e.g. 09222222222",
-                    prefixIcon: Icons.phone_android,
-                  ),
+                  onChanged: _handleMobileChanged,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(10),
+                  ],
+                  decoration:
+                      _inputDecoration(
+                        hint: "9XXXXXXXXX",
+                        prefixIcon: Icons.phone_android,
+                      ).copyWith(
+                        prefixText: '+63 ',
+                        prefixStyle: const TextStyle(
+                          color: Color(0xFF101C45),
+                          fontWeight: FontWeight.w600,
+                          fontFamily: 'Poppins',
+                        ),
+                      ),
                 ),
                 const SizedBox(height: 20),
 

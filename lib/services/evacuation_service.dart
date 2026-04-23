@@ -1,17 +1,25 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:silag/models/evacuation_model.dart'; // Double-check this import path!
+import 'api_config.dart';
 
 class EvacuationService {
-  // REMINDER:
-  // Use 'http://127.0.0.1:8000' if testing on Chrome (Web)
-  // Use 'http://10.0.2.2:8000' if testing on an Android Emulator
-  final String baseUrl = 'http://127.0.0.1:8000';
+  Uri _buildUri(
+    String path, {
+    String? version,
+    Map<String, dynamic>? queryParameters,
+  }) {
+    return ApiConfig.uri(
+      path,
+      version: version,
+      queryParameters: queryParameters,
+    );
+  }
 
   Future<List<EvacuationModel>> fetchEvacuationCenters() async {
     try {
       // 1. Point exactly to your FastAPI GET route
-      final url = Uri.parse('$baseUrl/evacuation_sites');
+      final url = _buildUri('evacuation_sites');
 
       // 2. Make the network request
       final response = await http.get(url);

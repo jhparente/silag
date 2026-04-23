@@ -2,14 +2,23 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:silag/models/user_model.dart';
+import 'api_config.dart';
 import 'ban_check_service.dart';
 
 class AuthService {
-  final String baseUrl = 'http://127.0.0.1:8000'; // web / USB run
-  // final String baseUrl = 'http://10.0.2.2:8000';      // Android emulator
-  // final String baseUrl = 'http://192.168.100.17:8000';  // physical device WiFi
-
   final _storage = const FlutterSecureStorage();
+
+  Uri _buildUri(
+    String path, {
+    String? version,
+    Map<String, dynamic>? queryParameters,
+  }) {
+    return ApiConfig.uri(
+      path,
+      version: version,
+      queryParameters: queryParameters,
+    );
+  }
 
   String _normalizeToken(String token) {
     final trimmed = token.trim();
@@ -29,7 +38,7 @@ class AuthService {
   }) async {
     try {
       final response = await http.post(
-        Uri.parse('$baseUrl/login'),
+        _buildUri('login'),
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
@@ -98,19 +107,28 @@ class AuthService {
     required String username,
     required String mobileNumber,
     required String password,
+    double? latitude,
+    double? longitude,
   }) async {
     try {
+      final payload = <String, dynamic>{
+        'username': username,
+        'mobile_number': mobileNumber,
+        'password_hash': password,
+      };
+
+      if (latitude != null && longitude != null) {
+        payload['latitude'] = latitude;
+        payload['longitude'] = longitude;
+      }
+
       final response = await http.post(
-        Uri.parse('$baseUrl/register_new_account'),
+        _buildUri('register_new_account'),
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
         },
-        body: jsonEncode({
-          'username': username,
-          'mobile_number': mobileNumber,
-          'password_hash': password,
-        }),
+        body: jsonEncode(payload),
       );
 
       final Map<String, dynamic> responseBody = jsonDecode(response.body);

@@ -1,43 +1,59 @@
+import 'dart:convert';
+
+import 'package:http/http.dart' as http;
 import 'package:silag/models/sensor_model.dart';
+import 'package:silag/services/api_config.dart';
 
 class SensorService {
+  Uri _buildUri(
+    String path, {
+    String? version,
+    Map<String, dynamic>? queryParameters,
+  }) {
+    return ApiConfig.uri(
+      path,
+      version: version,
+      queryParameters: queryParameters,
+    );
+  }
+
   Future<List<SensorModel>> fetchSensors() async {
-    await Future.delayed(Duration(milliseconds: 80)); // Simulate network delay
+    try {
+      final response = await http
+          .get(_buildUri('sensors'))
+          .timeout(const Duration(seconds: 15));
 
-    return [
-      // For ultrasonic sensors:
-      // normal, warning, danger, critical
+      if (response.statusCode != 200) {
+        throw Exception('Failed to load sensors. HTTP ${response.statusCode}');
+      }
 
-      // For float sensors:
-      // normal, rising
-      SensorModel.ultrasonic(
-        id: '1',
-        name: 'Sensor 1',
-        waterLevel: 3.0,
-        status: 'Danger',
-        location: 'Dalandanan Elementary School',
-      ),
-      SensorModel.float(
-        id: '2',
-        name: 'Sensor 2',
-        isRising: true,
-        status: 'Rising',
-        location: 'Dalandanan Elementary School',
-      ),
-      SensorModel.ultrasonic(
-        id: '3',
-        name: 'Sensor 3',
-        waterLevel: 0,
-        status: 'Normal',
-        location: '7/11 Dalandanan',
-      ),
-      SensorModel.float(
-        id: '4',
-        name: 'Sensor 4',
-        isRising: false,
-        status: 'Normal',
-        location: '7/11 Dalandanan',
-      ),
-    ];
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map<String, dynamic>) {
+        throw Exception('Invalid sensor response format');
+      }
+
+      final status = (decoded['status'] ?? '').toString().toLowerCase();
+      if (status != 'success') {
+        throw Exception('Backend returned non-success status');
+      }
+
+      final rows = decoded['data'];
+      if (rows is! List) return [];
+
+      return rows
+          .whereType<Map>()
+          .map((row) => SensorModel.fromJson(Map<String, dynamic>.from(row)))
+          .toList();
+    } catch (e) {
+      final errStr = e.toString();
+      if (errStr.contains('ClientException') ||
+          errStr.contains('SocketException') ||
+          errStr.contains('Failed to fetch') ||
+          errStr.contains('Connection refused') ||
+          errStr.contains('Network is unreachable')) {
+        throw Exception('Network error occurred. Please try again later.');
+      }
+      rethrow;
+    }
   }
 }

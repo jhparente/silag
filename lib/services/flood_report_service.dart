@@ -4,16 +4,26 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:silag/models/flood_report_model.dart';
+import 'api_config.dart';
 
 class FloodReportService {
   static final FloodReportService _instance = FloodReportService._internal();
   factory FloodReportService() => _instance;
   FloodReportService._internal();
 
-  final String baseUrl = 'http://127.0.0.1:8000'; // web / USB run
-  // final String baseUrl = 'http://10.0.2.2:8000';      // Android emulator
-  // final String baseUrl = 'http://192.168.100.17:8000';  // physical device WiFi
   final _storage = const FlutterSecureStorage();
+
+  Uri _buildUri(
+    String path, {
+    String? version,
+    Map<String, dynamic>? queryParameters,
+  }) {
+    return ApiConfig.uri(
+      path,
+      version: version,
+      queryParameters: queryParameters,
+    );
+  }
 
   // --- HELPER: Common auth headers ---
   Future<Map<String, String>> _authHeaders() async {
@@ -47,7 +57,7 @@ class FloodReportService {
         );
       }
 
-      final uri = Uri.parse('$baseUrl/submit_flood_report');
+      final uri = _buildUri('submit_flood_report');
       final response = await http.post(
         uri,
         headers: headers,
@@ -79,7 +89,7 @@ class FloodReportService {
   // --- SHARED: Fetch all accepted reports from backend ---
   Future<List<FloodReportModel>> _fetchPublicReports() async {
     final headers = await _authHeaders();
-    final uri = Uri.parse('$baseUrl/flood_reports_public');
+    final uri = _buildUri('flood_reports_public');
     final response = await http.get(uri, headers: headers);
 
     if (response.statusCode == 200) {
@@ -154,7 +164,7 @@ class FloodReportService {
         );
       }
 
-      final uri = Uri.parse('$baseUrl/submit_flood_report');
+      final uri = _buildUri('submit_flood_report');
       final request = http.MultipartRequest('POST', uri);
       request.headers.addAll({
         'Authorization': 'Bearer $token',
