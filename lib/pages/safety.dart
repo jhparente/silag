@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:silag/models/evacuation_model.dart';
+import 'package:silag/services/evacuation_request_service.dart';
 import 'package:silag/services/evacuation_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/hotline_service.dart';
@@ -15,9 +17,11 @@ class SafetyPage extends StatefulWidget {
 class _SafetyPageState extends State<SafetyPage> {
   final _hotlineService = HotlineService();
   final _evacuationService = EvacuationService();
+  final _evacuationRequestService = EvacuationRequestService();
 
   late Future<List<HotlineModel>> _hotlinesFuture;
   late Future<List<EvacuationModel>> _evacuationCentersFuture;
+  bool _isRequestingEvacuation = false;
 
   @override
   void initState() {
@@ -32,6 +36,101 @@ class _SafetyPageState extends State<SafetyPage> {
       _hotlinesFuture = _hotlineService.fetchMyHotlines();
       _evacuationCentersFuture = _evacuationService.fetchEvacuationCenters();
     });
+  }
+
+  String _cleanExceptionMessage(Object error) {
+    return error.toString().replaceAll('Exception: ', '').trim();
+  }
+
+  Future<Position> _getCurrentPositionForEvacuation() async {
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      throw Exception('Location services are disabled. Please enable GPS.');
+    }
+
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      throw Exception(
+        'Location permission is permanently denied. Please enable it in app settings.',
+      );
+    }
+
+    if (permission == LocationPermission.denied) {
+      throw Exception('Location permission denied.');
+    }
+
+    return Geolocator.getCurrentPosition(
+      locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+    );
+  }
+
+  Future<void> _requestEvacuation() async {
+    final shouldSend = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text(
+          'Request Evacuation',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        content: const Text(
+          'This will send your current location to responders. Continue?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF101C45),
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text(
+              'Send Request',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldSend != true || !mounted) return;
+
+    setState(() => _isRequestingEvacuation = true);
+
+    try {
+      final position = await _getCurrentPositionForEvacuation();
+      await _evacuationRequestService.requestEvacuation(
+        latitude: position.latitude,
+        longitude: position.longitude,
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Evacuation request sent. Keep your phone nearby for updates.',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Could not send evacuation request: ${_cleanExceptionMessage(e)}',
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isRequestingEvacuation = false);
+    }
   }
 
   // --- FUNCTION TO CALL NUMBER ---
@@ -160,6 +259,20 @@ class _SafetyPageState extends State<SafetyPage> {
                 );
               },
             ),
+            const SizedBox(height: 35),
+
+            const Text(
+              "Request Evacuation",
+              style: TextStyle(
+                color: Color(0xFF101C45),
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
+                fontFamily: 'Poppins',
+              ),
+            ),
+            const SizedBox(height: 15),
+
+            _buildEvacuationRequestCard(),
             const SizedBox(height: 35),
 
             // --- EVACUATION CENTERS LIST ---
@@ -368,6 +481,73 @@ class _SafetyPageState extends State<SafetyPage> {
                 fontSize: 12,
                 height: 1.4,
                 fontFamily: 'Poppins',
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEvacuationRequestCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEAF2FF),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFBED3FF)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Emergency Evacuation Request',
+            style: TextStyle(
+              color: Color(0xFF101C45),
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+              fontFamily: 'Poppins',
+            ),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'If you need immediate help, send your current location to responders.',
+            style: TextStyle(
+              color: Colors.black87,
+              fontSize: 12,
+              height: 1.4,
+              fontFamily: 'Poppins',
+            ),
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _isRequestingEvacuation ? null : _requestEvacuation,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF101C45),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+              icon: _isRequestingEvacuation
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : const Icon(Icons.my_location),
+              label: Text(
+                _isRequestingEvacuation
+                    ? 'Sending Request...'
+                    : 'Request Evacuation',
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontFamily: 'Poppins',
+                ),
               ),
             ),
           ),
