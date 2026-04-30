@@ -4,6 +4,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:silag/models/user_model.dart';
 import 'api_config.dart';
 import 'ban_check_service.dart';
+import 'push_token_service.dart';
 
 class AuthService {
   final _storage = const FlutterSecureStorage();
@@ -63,6 +64,8 @@ class AuthService {
         // Store a normalized token and user_id securely.
         await _storage.write(key: 'jwt_token', value: normalizedToken);
         await _storage.write(key: 'user_id', value: _extractUserId(userData));
+
+        await PushTokenService().registerTokenIfLoggedIn();
 
         // Start the ban-check polling so a banned user is kicked out
         // automatically even while the app is open.
@@ -140,6 +143,8 @@ class AuthService {
 
         await _storage.write(key: 'jwt_token', value: normalizedToken);
         await _storage.write(key: 'user_id', value: _extractUserId(userData));
+
+        await PushTokenService().registerTokenIfLoggedIn();
 
         // Start ban-check polling for new accounts too.
         BanCheckService().start();

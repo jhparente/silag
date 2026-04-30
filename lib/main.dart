@@ -6,23 +6,14 @@ import 'pages/login.dart';
 import 'services/auth_service.dart';
 import 'services/api_client.dart';
 import 'services/ban_check_service.dart';
+import 'services/push_token_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
-  /*
-  FirebaseMessaging messaging = FirebaseMessaging.instance;
-  NotificationSettings settings = await messaging.requestPermission(
-    alert: true,
-    badge: true,
-    sound: true,
-  );
-  print('User granted permission: ${settings.authorizationStatus}');
-  String? token = await messaging.getToken();
-  print("🔥 FIREBASE DEVICE TOKEN: $token");
-  */
+  await PushTokenService().initialize();
 
   final existingToken = await AuthService().getToken();
   if (existingToken != null && existingToken.isNotEmpty) {
