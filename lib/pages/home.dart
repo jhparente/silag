@@ -1,4 +1,5 @@
 // ignore_for_file: deprecated_member_use of withOpacity
+import 'dart:async';
 import 'package:flutter/material.dart';
 // import 'package:flutter_svg/flutter_svg.dart';
 import 'package:intl/intl.dart';
@@ -23,11 +24,32 @@ class _HomePageState extends State<HomePage> {
   late Future<WeatherModel> _weatherFuture;
   late Future<List<SensorModel>> _sensorsFuture;
 
+  /// Auto-refresh interval — sensors reload every 30 seconds automatically.
+  Timer? _refreshTimer;
+
   @override
   void initState() {
     super.initState();
     _weatherFuture = _weatherService.fetchWeather();
     _sensorsFuture = _sensorService.fetchSensors();
+    _startAutoRefresh();
+  }
+
+  void _startAutoRefresh() {
+    _refreshTimer?.cancel();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) {
+        setState(() {
+          _sensorsFuture = _sensorService.fetchSensors();
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _refreshData() async {
@@ -120,18 +142,16 @@ class _HomePageState extends State<HomePage> {
   }
 
   Color _sensorPrimaryColor(SensorModel sensor) {
-    if (sensor.type == SensorType.ultrasonic) {
-      if (sensor.waterLevel >= 3.0) return Colors.redAccent;
-      if (sensor.waterLevel >= 2.0) return Colors.orangeAccent;
-      if (sensor.waterLevel >= 1.0) return Colors.yellowAccent;
-      return Colors.greenAccent;
-    }
-
-    return sensor.isRising ? Colors.redAccent : Colors.greenAccent;
+    // Thresholds in feet matching backend defaults: warning ≥ 0.51 ft, critical ≥ 1.50 ft
+    final normalFt = sensor.normalThresholdFt ?? 0.51;
+    final criticalFt = sensor.criticalThresholdFt ?? 1.50;
+    if (sensor.waterLevel >= criticalFt) return Colors.redAccent;
+    if (sensor.waterLevel >= normalFt) return Colors.orangeAccent;
+    if (sensor.waterLevel >= 0.10) return Colors.yellowAccent;
+    return Colors.greenAccent;
   }
 
   void _showSensorDetails(SensorModel sensor) {
-    final isUltrasonic = sensor.type == SensorType.ultrasonic;
     final statusColor = _sensorPrimaryColor(sensor);
 
     showModalBottomSheet(
@@ -180,7 +200,7 @@ class _HomePageState extends State<HomePage> {
                             borderRadius: BorderRadius.circular(14),
                           ),
                           child: Icon(
-                            isUltrasonic ? Icons.flood : Icons.sensors,
+                            Icons.sensors,
                             color: statusColor,
                             size: 24,
                           ),
@@ -220,22 +240,24 @@ class _HomePageState extends State<HomePage> {
                     ),
                     _buildSensorDetailTile(
                       label: 'Sensor Type',
-                      value: isUltrasonic ? 'Ultrasonic' : 'Float',
+                      value: 'Ultrasonic',
                     ),
                     _buildSensorDetailTile(
                       label: 'Status',
                       value: sensor.status,
                     ),
-                    if (isUltrasonic)
-                      _buildSensorDetailTile(
-                        label: 'Current Water Level',
-                        value: '${sensor.waterLevel.toStringAsFixed(2)} m',
-                      )
-                    else
-                      _buildSensorDetailTile(
-                        label: 'Float Trend',
-                        value: sensor.isRising ? 'Rising' : 'Stable',
-                      ),
+                    _buildSensorDetailTile(
+                      label: 'Current Water Level',
+                      value: '${sensor.waterLevel.toStringAsFixed(2)} ft',
+                    ),
+                    _buildSensorDetailTile(
+                      label: 'Warning Threshold',
+                      value: '${(sensor.normalThresholdFt ?? 0.51).toStringAsFixed(2)} ft',
+                    ),
+                    _buildSensorDetailTile(
+                      label: 'Critical Threshold',
+                      value: '${(sensor.criticalThresholdFt ?? 1.50).toStringAsFixed(2)} ft',
+                    ),
                     _buildSensorDetailTile(
                       label: 'Last Refreshed',
                       value: DateFormat(
@@ -320,60 +342,41 @@ class _HomePageState extends State<HomePage> {
     IconData statusIcon;
     String displayStatus;
     String displayValue;
-    String floodDescription = 'Normal';
+    String floodDescription;
     double glowIntensity = 0.1;
-    double fillPercentage = 1.0; // Default fill percentage
+    double fillPercentage = 1.0;
 
-    if (sensor.type == SensorType.ultrasonic) {
-      displayValue = '${sensor.waterLevel}m';
-      displayStatus = sensor.status;
+    // Thresholds in feet — use per-sensor thresholds if set, else backend defaults
+    final normalFt = sensor.normalThresholdFt ?? 0.51;
+    final criticalFt = sensor.criticalThresholdFt ?? 1.50;
 
-      if (sensor.waterLevel >= 3.0) {
-        statusColor = Colors.redAccent;
-        statusIcon = Icons.flood;
-        floodDescription = 'Waist Level';
-        glowIntensity = 0.3;
-        fillPercentage = 0.25; // Small arc for critical/high
-      } else if (sensor.waterLevel >= 2.0) {
-        statusColor = Colors.orangeAccent;
-        statusIcon = Icons.warning_amber_rounded;
-        floodDescription = 'Knee Level';
-        glowIntensity = 0.2;
-        fillPercentage = 0.60; // Partial arc for warning
-      } else if (sensor.waterLevel >= 1.0) {
-        statusColor = Colors.yellowAccent;
-        statusIcon = Icons.water;
-        floodDescription = 'Ankle Level';
-        glowIntensity = 0.1;
-        fillPercentage = 0.75; // Mostly full for alert
-      } else {
-        statusColor = Colors.greenAccent;
-        statusIcon = Icons.house_outlined;
-        floodDescription = 'No Flood';
-        glowIntensity = 0.05;
-        fillPercentage = 1.0; // Full circle for safe
-      }
-    } else if (sensor.type == SensorType.float) {
-      displayValue = sensor.isRising ? 'Rising' : 'Stable';
-      displayStatus = sensor.status;
+    displayValue = '${sensor.waterLevel.toStringAsFixed(2)} ft';
+    displayStatus = sensor.status;
 
-      if (sensor.isRising) {
-        statusColor = Colors.redAccent;
-        statusIcon = Icons.warning_amber_rounded;
-        glowIntensity = 0.2;
-        fillPercentage = 0.50; // Half circle for rising
-      } else {
-        statusColor = Colors.greenAccent;
-        statusIcon = Icons.house_outlined;
-        glowIntensity = 0.05;
-        fillPercentage = 1.0; // Full circle for stable
-      }
+    if (sensor.waterLevel >= criticalFt) {
+      statusColor = Colors.redAccent;
+      statusIcon = Icons.flood;
+      floodDescription = 'Critical Level';
+      glowIntensity = 0.3;
+      fillPercentage = 0.25;
+    } else if (sensor.waterLevel >= normalFt) {
+      statusColor = Colors.orangeAccent;
+      statusIcon = Icons.warning_amber_rounded;
+      floodDescription = 'Warning Level';
+      glowIntensity = 0.2;
+      fillPercentage = 0.60;
+    } else if (sensor.waterLevel >= 0.10) {
+      statusColor = Colors.yellowAccent;
+      statusIcon = Icons.water;
+      floodDescription = 'Low Flood';
+      glowIntensity = 0.1;
+      fillPercentage = 0.75;
     } else {
-      // Default values for unknown sensor types
-      statusColor = Colors.grey;
-      statusIcon = Icons.help_outline;
-      displayStatus = 'Unknown';
-      displayValue = 'N/A';
+      statusColor = Colors.greenAccent;
+      statusIcon = Icons.house_outlined;
+      floodDescription = 'No Flood';
+      glowIntensity = 0.05;
+      fillPercentage = 1.0;
     }
 
     return Material(
@@ -439,62 +442,52 @@ class _HomePageState extends State<HomePage> {
                       children: [
                         Icon(statusIcon, color: Colors.white, size: 35),
                         const SizedBox(width: 10),
-                        if (sensor.type == SensorType.float)
-                          Text(
-                            displayStatus,
-                            style: TextStyle(
-                              color: statusColor,
-                              fontWeight: FontWeight.w500,
-                              fontSize: 16,
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Text(
+                                  '$floodDescription - ',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w500,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                                Text(
+                                  sensor.status,
+                                  style: TextStyle(
+                                    color: statusColor,
+                                    fontWeight: FontWeight.w500,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ],
                             ),
-                          )
-                        else
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Text(
-                                    '$floodDescription - ',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w500,
-                                      fontSize: 14,
-                                    ),
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                const Text(
+                                  'Water Level: ',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w500,
+                                    fontSize: 14,
                                   ),
-                                  Text(
-                                    sensor.status,
-                                    style: TextStyle(
-                                      color: statusColor,
-                                      fontWeight: FontWeight.w500,
-                                      fontSize: 14,
-                                    ),
+                                ),
+                                Text(
+                                  displayValue,
+                                  style: TextStyle(
+                                    color: statusColor,
+                                    fontWeight: FontWeight.w500,
+                                    fontSize: 14,
                                   ),
-                                ],
-                              ),
-                              const SizedBox(height: 4),
-                              Row(
-                                children: [
-                                  const Text(
-                                    'Flood Level: ',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w500,
-                                      fontSize: 14,
-                                    ),
-                                  ),
-                                  Text(
-                                    displayValue,
-                                    style: TextStyle(
-                                      color: statusColor,
-                                      fontWeight: FontWeight.w500,
-                                      fontSize: 14,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
                       ],
                     ),
                   ],
@@ -517,6 +510,67 @@ class _HomePageState extends State<HomePage> {
 
   // Weather Card
   Widget _buildWeatherCard(WeatherModel weather) {
+    // Build the 5-slot hourly forecast strip centred on "Now".
+    // Strategy: pick up to 2 entries before current hour, current hour, then up to 2 after.
+    final now = DateTime.now();
+    final hourly = weather.hourly;
+
+    // Find the index of the closest hourly entry to now
+    int nowIndex = 0;
+    if (hourly.isNotEmpty) {
+      int closest = 0;
+      Duration closestDiff = (hourly[0].time.difference(now)).abs();
+      for (int i = 1; i < hourly.length; i++) {
+        final diff = (hourly[i].time.difference(now)).abs();
+        if (diff < closestDiff) {
+          closestDiff = diff;
+          closest = i;
+        }
+      }
+      nowIndex = closest;
+    }
+
+    // Pick indices: 2 before, current, 2 after — clamped to available range
+    final List<_HourlySlot> slots = [];
+    final int total = hourly.length;
+    if (total == 0) {
+      // Fallback: show 5 time-based placeholders when no hourly data
+      for (int offset = -2; offset <= 2; offset++) {
+        final slotTime = now.add(Duration(hours: offset));
+        final isNow = offset == 0;
+        slots.add(_HourlySlot(
+          label: isNow ? 'Now' : _formatHour(slotTime),
+          iconCode: weather.iconCode,
+          rainChance: (weather.rainChance * 100).round(),
+          isNow: isNow,
+        ));
+      }
+    } else {
+      for (int offset = -2; offset <= 2; offset++) {
+        final idx = nowIndex + offset;
+        final isNow = offset == 0;
+        if (idx >= 0 && idx < total) {
+          final entry = hourly[idx];
+          slots.add(_HourlySlot(
+            label: isNow ? 'Now' : _formatHour(entry.time),
+            iconCode: entry.iconCode,
+            rainChance: entry.rainChance,
+            isNow: isNow,
+          ));
+        } else {
+          // Out-of-range slot: show a synthetic time
+          final syntheticTime = (nowIndex < total ? hourly[nowIndex].time : now)
+              .add(Duration(hours: offset));
+          slots.add(_HourlySlot(
+            label: _formatHour(syntheticTime),
+            iconCode: weather.iconCode,
+            rainChance: (weather.rainChance * 100).round(),
+            isNow: false,
+          ));
+        }
+      }
+    }
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 25),
@@ -542,8 +596,8 @@ class _HomePageState extends State<HomePage> {
                 width: 130,
                 height: 130,
                 fit: BoxFit.contain,
-                errorBuilder: (context, error, stackTrace) => const Icon(
-                  Icons.cloud,
+                errorBuilder: (context, error, stackTrace) => Icon(
+                  _iconCodeToIcon(weather.iconCode),
                   size: 100,
                   color: Colors.lightBlueAccent,
                 ),
@@ -552,7 +606,7 @@ class _HomePageState extends State<HomePage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '${weather.temp.round()}°C',
+                    '${weather.temp.round()}\u00b0C',
                     style: const TextStyle(
                       fontFamily: 'Poppins',
                       fontSize: 52,
@@ -589,7 +643,7 @@ class _HomePageState extends State<HomePage> {
               children: [
                 _buildWeatherDetail('Humidity', '${weather.humidity}%'),
                 _buildVerticalDivider(),
-                _buildWeatherDetail('Wind', '${weather.windSpeed} km/h'),
+                _buildWeatherDetail('Wind', '${weather.windSpeed.toStringAsFixed(1)} km/h'),
                 _buildVerticalDivider(),
                 _buildWeatherDetail(
                   'Rain',
@@ -601,21 +655,43 @@ class _HomePageState extends State<HomePage> {
 
           const SizedBox(height: 25),
 
-          // C. BOTTOM: Hourly Forecast
+          // C. BOTTOM: Dynamic Hourly Forecast
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              _buildHourlyItem("11:00", Icons.cloud, false),
-              _buildHourlyItem("Now", Icons.cloud_queue, true), // Active
-              _buildHourlyItem("3:00", Icons.bolt, false),
-              _buildHourlyItem("5:00", Icons.grain, false),
-              _buildHourlyItem("7:00", Icons.wb_cloudy, false),
-            ],
+            children: slots.map((slot) => _buildHourlyItem(slot)).toList(),
           ),
         ],
       ),
     );
   }
+
+  /// Formats a DateTime as a 12-hour hour label e.g. "3 AM", "2 PM".
+  String _formatHour(DateTime dt) {
+    final h = dt.hour;
+    if (h == 0) return '12 AM';
+    if (h < 12) return '$h AM';
+    if (h == 12) return '12 PM';
+    return '${h - 12} PM';
+  }
+
+  /// Maps an OpenWeatherMap icon code to a fallback Material icon.
+  /// OWM codes look like "01d", "04n" — strip the trailing d/n to get the numeric part.
+  IconData _iconCodeToIcon(String code) {
+    final c = code.replaceAll(RegExp(r'[dn]$'), '');
+    switch (c) {
+      case '01': return Icons.wb_sunny;        // clear sky
+      case '02': return Icons.wb_cloudy;        // few clouds
+      case '03': return Icons.cloud;            // scattered clouds
+      case '04': return Icons.cloud_queue;      // broken/overcast clouds
+      case '09': return Icons.grain;            // shower rain
+      case '10': return Icons.water_drop;       // rain
+      case '11': return Icons.bolt;             // thunderstorm
+      case '13': return Icons.ac_unit;          // snow
+      case '50': return Icons.foggy;            // mist
+      default:   return Icons.wb_cloudy;
+    }
+  }
+
 
   // HELPER: Single Weather Detail (Humidity, Wind, Rain)
   Widget _buildWeatherDetail(String label, String value) {
@@ -652,15 +728,15 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // Hourly Forecast Item
-  Widget _buildHourlyItem(String time, IconData icon, bool isActive) {
+  // Hourly Forecast Item — driven by real API data
+  Widget _buildHourlyItem(_HourlySlot slot) {
     return Container(
-      width: 55,
-      padding: const EdgeInsets.symmetric(vertical: 12),
+      width: 56,
+      padding: const EdgeInsets.symmetric(vertical: 10),
       decoration: BoxDecoration(
-        color: isActive ? const Color(0xFF4A90E2) : const Color(0xFF1D284B),
+        color: slot.isNow ? const Color(0xFF4A90E2) : const Color(0xFF1D284B),
         borderRadius: BorderRadius.circular(15),
-        boxShadow: isActive
+        boxShadow: slot.isNow
             ? [
                 BoxShadow(
                   color: const Color(0xFF4A90E2).withOpacity(0.5),
@@ -671,17 +747,39 @@ class _HomePageState extends State<HomePage> {
             : [],
       ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            time,
+            slot.label,
             style: const TextStyle(
               color: Colors.white,
-              fontSize: 12,
+              fontSize: 11,
               fontFamily: 'Poppins',
             ),
           ),
-          const SizedBox(height: 8),
-          Icon(icon, color: Colors.white, size: 20),
+          const SizedBox(height: 6),
+          // Real OWM weather icon image
+          Image.network(
+            'https://openweathermap.org/img/wn/${slot.iconCode}@2x.png',
+            width: 32,
+            height: 32,
+            fit: BoxFit.contain,
+            errorBuilder: (_, __, ___) => Icon(
+              _iconCodeToIcon(slot.iconCode),
+              color: Colors.white,
+              size: 20,
+            ),
+          ),
+          const SizedBox(height: 4),
+          // Rain chance percentage
+          Text(
+            '${slot.rainChance}%',
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.75),
+              fontSize: 10,
+              fontFamily: 'Poppins',
+            ),
+          ),
         ],
       ),
     );
@@ -866,3 +964,19 @@ class _NeonRingPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }
+
+/// Data holder for a single hourly forecast slot in the weather card strip.
+class _HourlySlot {
+  final String label;     // "Now", "3 AM", "5 PM", etc.
+  final String iconCode;  // OWM icon code e.g. "04d"
+  final int rainChance;   // 0-100 %
+  final bool isNow;
+
+  const _HourlySlot({
+    required this.label,
+    required this.iconCode,
+    required this.rainChance,
+    required this.isNow,
+  });
+}
+

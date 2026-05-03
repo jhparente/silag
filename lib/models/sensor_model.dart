@@ -1,13 +1,19 @@
-enum SensorType { ultrasonic, float }
+// All sensors are ultrasonic — the float sensor type was removed from the database.
+enum SensorType { ultrasonic }
 
 class SensorModel {
   final String id;
   final String name;
   final SensorType type;
+  /// Water level in feet (ft)
   final double waterLevel;
   final bool isRising;
   final String status;
   final String location;
+  /// Per-sensor warning threshold in feet (null = use global threshold)
+  final double? normalThresholdFt;
+  /// Per-sensor critical threshold in feet (null = use global threshold)
+  final double? criticalThresholdFt;
 
   // Private constructor to enforce immutability
   SensorModel._internal({
@@ -18,64 +24,36 @@ class SensorModel {
     this.isRising = false,
     required this.status,
     required this.location,
+    this.normalThresholdFt,
+    this.criticalThresholdFt,
   });
 
-  // Factory constructor for creating a new SensorModel instance
+  /// Factory constructor — all sensors are treated as ultrasonic.
   factory SensorModel.ultrasonic({
     required String id,
     required String name,
     required double waterLevel,
     required String status,
     required String location,
+    double? normalThresholdFt,
+    double? criticalThresholdFt,
   }) {
     return SensorModel._internal(
       id: id,
       name: name,
       type: SensorType.ultrasonic,
       waterLevel: waterLevel,
-      isRising: false, // Default value for ultrasonic sensors
+      isRising: false,
       status: status,
       location: location,
-    );
-  }
-
-  factory SensorModel.float({
-    required String id,
-    required String name,
-    required bool isRising,
-    required String status,
-    required String location,
-  }) {
-    return SensorModel._internal(
-      id: id,
-      name: name,
-      type: SensorType.float,
-      waterLevel: 0.0, // Default value for float sensors
-      isRising: isRising,
-      status: status,
-      location: location,
+      normalThresholdFt: normalThresholdFt,
+      criticalThresholdFt: criticalThresholdFt,
     );
   }
 
   factory SensorModel.fromJson(Map<String, dynamic> json) {
     final rawStatus = (json['flood_status'] ?? json['status'] ?? '').toString();
     final status = _normalizeStatus(rawStatus);
-
-    final rawType = (json['sensor_type'] ?? json['type'] ?? '')
-        .toString()
-        .trim()
-        .toLowerCase();
-
-    final hasRisingFlag =
-        json.containsKey('is_rising') || json.containsKey('isRising');
-
-    final type = rawType.contains('ultra')
-        ? SensorType.ultrasonic
-        : rawType.contains('float')
-        ? SensorType.float
-        : (hasRisingFlag || status.toLowerCase() == 'rising')
-        ? SensorType.float
-        : SensorType.ultrasonic;
 
     final id = (json['id'] ?? json['sensor_id'] ?? '').toString();
     final name = (json['sensor_name'] ?? json['name'] ?? 'Unknown Sensor')
@@ -84,30 +62,26 @@ class SensorModel {
         (json['location_name'] ?? json['location'] ?? 'Unknown Location')
             .toString();
 
+    // water_level / current_water_level is stored in feet by the backend
     final waterLevel = _toDouble(
       json['current_water_level'] ?? json['water_level'] ?? json['waterLevel'],
     );
 
-    final isRising =
-        _toBool(json['is_rising'] ?? json['isRising']) ||
-        status.toLowerCase() == 'rising';
-
-    if (type == SensorType.float) {
-      return SensorModel.float(
-        id: id,
-        name: name,
-        isRising: isRising,
-        status: status.isEmpty ? (isRising ? 'Rising' : 'Normal') : status,
-        location: location,
-      );
-    }
+    final normalThresholdFt = _toDoubleOrNull(
+      json['normal_threshold_ft'],
+    );
+    final criticalThresholdFt = _toDoubleOrNull(
+      json['critical_threshold_ft'],
+    );
 
     return SensorModel.ultrasonic(
       id: id,
       name: name,
       waterLevel: waterLevel,
-      status: status.isEmpty ? _statusFromWaterLevel(waterLevel) : status,
+      status: status.isEmpty ? _statusFromWaterLevelFt(waterLevel) : status,
       location: location,
+      normalThresholdFt: normalThresholdFt,
+      criticalThresholdFt: criticalThresholdFt,
     );
   }
 
@@ -117,14 +91,11 @@ class SensorModel {
     return 0.0;
   }
 
-  static bool _toBool(dynamic value) {
-    if (value is bool) return value;
-    if (value is num) return value != 0;
-    if (value is String) {
-      final v = value.trim().toLowerCase();
-      return v == 'true' || v == '1' || v == 'yes' || v == 'rising';
-    }
-    return false;
+  static double? _toDoubleOrNull(dynamic value) {
+    if (value == null) return null;
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value);
+    return null;
   }
 
   static String _normalizeStatus(String raw) {
@@ -141,10 +112,16 @@ class SensorModel {
         .join(' ');
   }
 
-  static String _statusFromWaterLevel(double waterLevel) {
-    if (waterLevel >= 3.0) return 'Danger';
-    if (waterLevel >= 2.0) return 'Warning';
-    if (waterLevel >= 1.0) return 'Alert';
-    return 'Normal';
+  /// Derive a display status from water level in feet.
+  /// Thresholds match the backend defaults:
+  ///   Safe      :  0.00 – 0.09 ft
+  ///   Low Flood :  0.10 – 0.50 ft
+  ///   Warning   :  0.51 – 1.49 ft   (≥ rising_ft)
+  ///   Critical  :  1.50 ft and above (≥ critical_ft)
+  static String _statusFromWaterLevelFt(double waterLevelFt) {
+    if (waterLevelFt >= 1.50) return 'Critical';
+    if (waterLevelFt >= 0.51) return 'Warning';
+    if (waterLevelFt >= 0.10) return 'Low Flood';
+    return 'No Flood';
   }
 }
