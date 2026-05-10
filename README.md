@@ -2,46 +2,56 @@
 
 SILAG is an intelligent flood monitoring and early-warning mobile app built with Flutter and Firebase.
 
-## Prerequisites
+## Flutter Installation
 
-Install these before running the project:
+Before you begin, ensure you have the Flutter SDK installed on your system.
+Follow the official Flutter installation guide for your operating system:
+- [Windows](https://docs.flutter.dev/get-started/install/windows)
+- [macOS](https://docs.flutter.dev/get-started/install/macos)
+- [Linux](https://docs.flutter.dev/get-started/install/linux)
+
+Verify your installation by running:
+```bash
+flutter doctor
+```
+Resolve any missing dependencies (like Android Studio, Android SDKs, or command-line tools) highlighted by `flutter doctor`.
+
+## Prerequisites
 
 - Flutter SDK (compatible with Dart `^3.10.4`)
 - Git
 - Android Studio (for Android emulator/device support)
-- Xcode (macOS only, for iOS)
 - Node.js and npm (only needed for Firebase CLI usage)
 
-Useful checks:
+## How to Properly Run the App
 
-```bash
-flutter --version
-flutter doctor
-```
-
-## Quick Start After Cloning
-
-1. Clone the repository.
-
+1. **Clone the repository:**
 ```bash
 git clone <your-repo-url>
 cd silag
 ```
 
-2. Install project dependencies.
-
+2. **Install project dependencies:**
 ```bash
 flutter pub get
 ```
 
-3. Create an environment file named `.env` in the project root.
-
+3. **Set up the Environment:**
+Create an environment file named `.env` in the project root folder.
 ```env
 OPENWEATHER_API_KEY=your_openweather_api_key_here
 ```
 
-4. Run the app.
+4. **Connect to the Local Backend (Crucial for Local Development):**
+If you are running the Python FastAPI backend locally on `localhost:8000` and testing the Flutter app on an Android Emulator or physical Android device via USB, you **must** forward the device's port to your computer's localhost.
 
+Run the following command in your terminal:
+```bash
+adb reverse tcp:8000 tcp:8000
+```
+*Note: Ensure your Android emulator is running or your device is connected via USB debugging before running this command.*
+
+5. **Run the App:**
 ```bash
 flutter run
 ```
