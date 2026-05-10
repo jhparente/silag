@@ -1,8 +1,12 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:silag/models/evacuation_model.dart';
+import 'package:silag/pages/subpages/evacuation_map_page.dart';
 import 'package:silag/services/evacuation_request_service.dart';
 import 'package:silag/services/evacuation_service.dart';
+import 'package:silag/widgets/skeleton_loader.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/hotline_service.dart';
 import '../models/hotline_model.dart';
@@ -23,12 +27,74 @@ class _SafetyPageState extends State<SafetyPage> {
   late Future<List<EvacuationModel>> _evacuationCentersFuture;
   bool _isRequestingEvacuation = false;
 
+  // Evacuation request status tracking
+  String? _myEvacuationStatus; // 'pending' | 'accepted' | null
+  Timer? _statusPoller;
+  bool _shownAcceptedBanner = false;
+
   @override
   void initState() {
     super.initState();
-    // Fetch only global + personal hotlines
     _hotlinesFuture = _hotlineService.fetchMyHotlines();
     _evacuationCentersFuture = _evacuationService.fetchEvacuationCenters();
+    _startStatusPolling();
+
+    // Listen for foreground FCM messages
+    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      final type = message.data['type'];
+      if (type == 'evacuation_accepted' && mounted) {
+        _onEvacuationAccepted(showBanner: true);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _statusPoller?.cancel();
+    super.dispose();
+  }
+
+  void _startStatusPolling() {
+    _checkEvacuationStatus(); // immediate check
+    _statusPoller = Timer.periodic(
+      const Duration(seconds: 30),
+      (_) => _checkEvacuationStatus(),
+    );
+  }
+
+  Future<void> _checkEvacuationStatus() async {
+    final data = await _evacuationRequestService.getMyEvacuationRequest();
+    if (!mounted) return;
+    final status = data?['status'] as String?;
+    setState(() => _myEvacuationStatus = status);
+    if (status == 'accepted' && !_shownAcceptedBanner) {
+      _onEvacuationAccepted(showBanner: false);
+    }
+  }
+
+  void _onEvacuationAccepted({required bool showBanner}) {
+    _shownAcceptedBanner = true;
+    setState(() => _myEvacuationStatus = 'accepted');
+    if (showBanner && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: const Color(0xFF00C97A),
+          duration: const Duration(seconds: 6),
+          content: Row(
+            children: const [
+              Icon(Icons.check_circle, color: Colors.white),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  '🚨 Your evacuation request has been accepted! Help is on the way.',
+                  style: TextStyle(color: Colors.white, fontFamily: 'Poppins'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
   }
 
   void _refreshList() {
@@ -157,29 +223,18 @@ class _SafetyPageState extends State<SafetyPage> {
     }
   }
 
-  // --- FUNCTION TO LAUNCH MAP ---
-  Future<void> _launchMap(double latitude, double longitude) async {
-    final Uri googleMapsUri = Uri.parse(
-      'https://www.google.com/maps/search/?api=1&query=$latitude,$longitude',
+  // --- FUNCTION TO OPEN IN-APP MAP ---
+  void _openEvacuationMap(EvacuationModel site) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => EvacuationMapPage(
+          destLatitude: site.latitude,
+          destLongitude: site.longitude,
+          destName: site.name,
+        ),
+      ),
     );
-
-    try {
-      if (await canLaunchUrl(googleMapsUri)) {
-        await launchUrl(googleMapsUri);
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text('Could not launch map')));
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Could not launch map')));
-      }
-    }
   }
 
   @override
@@ -223,24 +278,15 @@ class _SafetyPageState extends State<SafetyPage> {
               future: _hotlinesFuture,
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(20),
-                      child: CircularProgressIndicator(),
+                  return Column(
+                    children: List.generate(
+                      3,
+                      (_) => const HotlineCardSkeleton(),
                     ),
                   );
                 }
                 if (snapshot.hasError) {
-                  return Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Text(
-                        "Error: ${snapshot.error}",
-                        style: const TextStyle(color: Colors.red, fontSize: 12),
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                  );
+                  return _buildConnectionErrorCard();
                 }
 
                 final hotlines = snapshot.data!;
@@ -291,24 +337,15 @@ class _SafetyPageState extends State<SafetyPage> {
               future: _evacuationCentersFuture,
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(20),
-                      child: CircularProgressIndicator(),
+                  return Column(
+                    children: List.generate(
+                      2,
+                      (_) => const EvacuationCenterSkeleton(),
                     ),
                   );
                 }
                 if (snapshot.hasError) {
-                  return Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Text(
-                        "Error: ${snapshot.error}",
-                        style: const TextStyle(color: Colors.red, fontSize: 12),
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                  );
+                  return _buildConnectionErrorCard();
                 }
 
                 final centers = snapshot.data ?? [];
@@ -490,30 +527,103 @@ class _SafetyPageState extends State<SafetyPage> {
   }
 
   Widget _buildEvacuationRequestCard() {
+    final isAccepted = _myEvacuationStatus == 'accepted';
+    final isPending = _myEvacuationStatus == 'pending';
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFFEAF2FF),
+        color: isAccepted
+            ? const Color(0xFFE6FFF3)
+            : const Color(0xFFEAF2FF),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFBED3FF)),
+        border: Border.all(
+          color: isAccepted ? const Color(0xFF00C97A) : const Color(0xFFBED3FF),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Emergency Evacuation Request',
+          Row(
+            children: [
+              if (isAccepted)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF00C97A),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.check_circle, color: Colors.white, size: 12),
+                      SizedBox(width: 4),
+                      Text(
+                        'ACCEPTED',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          fontFamily: 'Poppins',
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              else if (isPending)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFA000),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        width: 8,
+                        height: 8,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 1.5,
+                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
+                      ),
+                      SizedBox(width: 6),
+                      Text(
+                        'PENDING',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          fontFamily: 'Poppins',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+          if (_myEvacuationStatus != null) const SizedBox(height: 10),
+          Text(
+            isAccepted
+                ? 'Evacuation Accepted'
+                : 'Emergency Evacuation Request',
             style: TextStyle(
-              color: Color(0xFF101C45),
+              color: isAccepted ? const Color(0xFF00874F) : const Color(0xFF101C45),
               fontWeight: FontWeight.bold,
               fontSize: 14,
               fontFamily: 'Poppins',
             ),
           ),
           const SizedBox(height: 6),
-          const Text(
-            'If you need immediate help, send your current location to responders.',
-            style: TextStyle(
+          Text(
+            isAccepted
+                ? 'Your request was accepted. Help is on the way. Stay at your location and keep your phone nearby.'
+                : isPending
+                    ? 'Your evacuation request is being reviewed by responders.'
+                    : 'If you need immediate help, send your current location to responders.',
+            style: const TextStyle(
               color: Colors.black87,
               fontSize: 12,
               height: 1.4,
@@ -523,33 +633,57 @@ class _SafetyPageState extends State<SafetyPage> {
           const SizedBox(height: 14),
           SizedBox(
             width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: _isRequestingEvacuation ? null : _requestEvacuation,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF101C45),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 12),
-              ),
-              icon: _isRequestingEvacuation
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+            child: isAccepted
+                ? ElevatedButton.icon(
+                    onPressed: null,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF00C97A),
+                      disabledBackgroundColor: const Color(0xFF00C97A),
+                      disabledForegroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                    icon: const Icon(Icons.local_shipping, color: Colors.white),
+                    label: const Text(
+                      'Evacuation is Underway',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontFamily: 'Poppins',
                       ),
-                    )
-                  : const Icon(Icons.my_location),
-              label: Text(
-                _isRequestingEvacuation
-                    ? 'Sending Request...'
-                    : 'Request Evacuation',
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontFamily: 'Poppins',
-                ),
-              ),
-            ),
+                    ),
+                  )
+                : ElevatedButton.icon(
+                    onPressed: (isPending || _isRequestingEvacuation)
+                        ? null
+                        : _requestEvacuation,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF101C45),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                    icon: _isRequestingEvacuation
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor:
+                                  AlwaysStoppedAnimation<Color>(Colors.white),
+                            ),
+                          )
+                        : const Icon(Icons.my_location),
+                    label: Text(
+                      _isRequestingEvacuation
+                          ? 'Sending Request...'
+                          : isPending
+                              ? 'Request Sent – Awaiting Response'
+                              : 'Request Evacuation',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontFamily: 'Poppins',
+                      ),
+                    ),
+                  ),
           ),
         ],
       ),
@@ -625,7 +759,7 @@ class _SafetyPageState extends State<SafetyPage> {
                 ),
                 const SizedBox(height: 2),
                 GestureDetector(
-                  onTap: () => _launchMap(site.latitude, site.longitude),
+                  onTap: () => _openEvacuationMap(site),
                   child: Container(
                     height: 40,
                     width: 40,
@@ -814,6 +948,51 @@ class _SafetyPageState extends State<SafetyPage> {
           fontSize: 23,
           fontFamily: 'Poppins',
         ),
+      ),
+    );
+  }
+
+  /// Friendly error card shown when the backend / network is unreachable.
+  Widget _buildConnectionErrorCard() {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF3E0),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFFFCC80)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.wifi_off_rounded, color: Color(0xFFE65100), size: 28),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Unable to connect',
+                  style: TextStyle(
+                    color: Color(0xFFE65100),
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                    fontFamily: 'Poppins',
+                  ),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  'Check your internet connection or wait for the server to come online.',
+                  style: TextStyle(
+                    color: Color(0xFF795548),
+                    fontSize: 11,
+                    fontFamily: 'Poppins',
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:silag/pages/subpages/all_flood_reports.dart';
 import 'package:silag/pages/subpages/create_report.dart';
 import 'package:silag/widgets/report_details_dialog.dart';
+import 'package:silag/widgets/skeleton_loader.dart';
 import '../services/community_status_services.dart';
 import '../models/community_status_model.dart';
 import '../services/flood_report_service.dart';
@@ -127,9 +128,7 @@ class _ReportPageState extends State<ReportPage> {
       ),
 
       body: _isLoading
-          ? const Center(
-              child: CircularProgressIndicator(color: Color(0xFF101C45)),
-            )
+          ? _buildReportSkeleton()
           : RefreshIndicator(
               color: const Color(0xFF101C45),
               onRefresh: _refresh,
@@ -293,13 +292,17 @@ class _ReportPageState extends State<ReportPage> {
                         future: _recentReportsFuture,
                         builder: (context, snapshot) {
                           if (!snapshot.hasData && !snapshot.hasError) {
-                            return const Center(
-                              child: CircularProgressIndicator(),
+                            return const SizedBox(
+                              height: 180,
+                              child: Center(child: _FloodReportRowSkeleton()),
                             );
                           }
                           if (snapshot.hasError) {
-                            return const Center(
-                              child: Text("Error loading reports"),
+                            return const SizedBox(
+                              height: 180,
+                              child: Center(
+                                child: _ConnectionErrorInline(),
+                              ),
                             );
                           }
 
@@ -493,6 +496,96 @@ class _ReportPageState extends State<ReportPage> {
           fontFamily: 'Poppins',
         ),
       ),
+    );
+  }
+
+  /// Full-page skeleton shown while the community stats are loading.
+  Widget _buildReportSkeleton() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Stat cards row
+          const ReportStatSkeleton(),
+          const SizedBox(height: 30),
+          // "Are you safe?" button row
+          const LightShimmerBox(height: 20, width: 120, borderRadius: 6),
+          const SizedBox(height: 15),
+          const LightShimmerBox(height: 50, borderRadius: 10),
+          const SizedBox(height: 40),
+          // Section heading
+          const LightShimmerBox(height: 18, width: 160, borderRadius: 6),
+          const SizedBox(height: 10),
+          // Horizontal image cards
+          SizedBox(
+            height: 180,
+            child: Row(
+              children: List.generate(
+                3,
+                (_) => Container(
+                  width: 200,
+                  margin: const EdgeInsets.only(right: 15),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF0F3FF),
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                  child: const LightShimmerBox(height: 180, borderRadius: 15),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---- Private helper widgets ------------------------------------------------
+
+/// Skeleton row for the horizontal recent-reports strip.
+class _FloodReportRowSkeleton extends StatelessWidget {
+  const _FloodReportRowSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: List.generate(
+        3,
+        (_) => Container(
+          width: 200,
+          margin: const EdgeInsets.only(right: 15),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF0F3FF),
+            borderRadius: BorderRadius.circular(15),
+          ),
+          child: const LightShimmerBox(height: 180, borderRadius: 15),
+        ),
+      ),
+    );
+  }
+}
+
+/// Compact offline / error notice used inline inside the reports section.
+class _ConnectionErrorInline extends StatelessWidget {
+  const _ConnectionErrorInline();
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: const [
+        Icon(Icons.wifi_off_rounded, color: Color(0xFFE65100), size: 20),
+        SizedBox(width: 8),
+        Text(
+          'Could not load reports',
+          style: TextStyle(
+            color: Color(0xFFE65100),
+            fontSize: 13,
+            fontFamily: 'Poppins',
+          ),
+        ),
+      ],
     );
   }
 }

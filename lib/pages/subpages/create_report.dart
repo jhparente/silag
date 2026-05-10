@@ -27,13 +27,16 @@ class _CreateReportPageState extends State<CreateReportPage> {
 
   // Form Controllers
   final _descriptionController = TextEditingController();
-  String _selectedFloodLevel = 'Medium (Knee)';
+  String _selectedFloodLevel = '1 ft - Low (Advisory)';
 
   final List<String> _floodLevels = [
-    'Low (Ankle)',
-    'Medium (Knee)',
-    'High (Waist)',
-    'Severe (Chest & Above)',
+    '1 ft - Low (Advisory)',
+    '2 ft - High (Warning)',
+    '3 ft - Critical',
+    '4 ft - Severe',
+    '5 ft - Extreme',
+    '6 ft - Dangerous',
+    '7 ft - Catastrophic',
   ];
 
   // --- GET GPS LOCATION ---

@@ -23,6 +23,32 @@ class EvacuationRequestService {
     );
   }
 
+  /// Returns the user's latest pending/accepted evacuation request, or null.
+  Future<Map<String, dynamic>?> getMyEvacuationRequest() async {
+    try {
+      final token = await _storage.read(key: 'jwt_token');
+      if (token == null) return null;
+
+      final response = await http.get(
+        _buildUri('my_evacuation_request'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Accept': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final body = jsonDecode(response.body);
+        final data = body['data'];
+        if (data == null) return null;
+        return Map<String, dynamic>.from(data);
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> requestEvacuation({
     required double latitude,
     required double longitude,

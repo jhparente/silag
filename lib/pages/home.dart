@@ -8,6 +8,7 @@ import 'package:silag/services/sensor_service.dart';
 import 'package:silag/services/weather_service.dart';
 import 'package:silag/models/weather_model.dart';
 import 'package:silag/models/sensor_model.dart';
+import 'package:silag/widgets/skeleton_loader.dart';
 import 'dart:math' as math; // Required for the drawing math
 
 class HomePage extends StatefulWidget {
@@ -81,10 +82,10 @@ class _HomePageState extends State<HomePage> {
                 future: _weatherFuture,
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
-                    return _buildLoadingSkeleton(height: 400);
+                    return const WeatherCardSkeleton();
                   }
                   if (snapshot.hasError) {
-                    return _buildErrorCard(snapshot.error.toString());
+                    return _buildErrorCard();
                   }
                   // display the weather card if data is available
                   final weather = snapshot.data!;
@@ -115,14 +116,14 @@ class _HomePageState extends State<HomePage> {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return Column(
                       children: [
-                        _buildLoadingSkeleton(height: 100),
-                        const SizedBox(height: 15),
-                        _buildLoadingSkeleton(height: 100),
+                        const SensorCardSkeleton(),
+                        const SizedBox(height: 8),
+                        const SensorCardSkeleton(),
                       ],
                     );
                   }
                   if (snapshot.hasError) {
-                    return _buildErrorCard('Failed to load the sensors');
+                    return _buildErrorCard();
                   }
 
                   final sensors = snapshot.data!;
@@ -141,14 +142,40 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  /// Returns the flood level color based on water level in feet.
+  /// Matches the 7-level table:
+  ///   < 1 ft  : Safe        (green)
+  ///   ≥ 1 ft  : Low         (#FFC107  Advisory)
+  ///   ≥ 2 ft  : High        (#FF9800  Warning)
+  ///   ≥ 3 ft  : Critical    (#F44336)
+  ///   ≥ 4 ft  : Severe      (#B71C1C)
+  ///   ≥ 5 ft  : Extreme     (#9C27B0)
+  ///   ≥ 6 ft  : Dangerous   (#311B92)
+  ///   ≥ 7 ft  : Catastrophic(#121212)
   Color _sensorPrimaryColor(SensorModel sensor) {
-    // Thresholds in feet matching backend defaults: warning ≥ 0.51 ft, critical ≥ 1.50 ft
-    final normalFt = sensor.normalThresholdFt ?? 0.51;
-    final criticalFt = sensor.criticalThresholdFt ?? 1.50;
-    if (sensor.waterLevel >= criticalFt) return Colors.redAccent;
-    if (sensor.waterLevel >= normalFt) return Colors.orangeAccent;
-    if (sensor.waterLevel >= 0.10) return Colors.yellowAccent;
+    return _colorFromLevel(sensor.waterLevel);
+  }
+
+  static Color _colorFromLevel(double wl) {
+    if (wl >= 7.0) return const Color(0xFF121212);
+    if (wl >= 6.0) return const Color(0xFF311B92);
+    if (wl >= 5.0) return const Color(0xFF9C27B0);
+    if (wl >= 4.0) return const Color(0xFFB71C1C);
+    if (wl >= 3.0) return const Color(0xFFF44336);
+    if (wl >= 2.0) return const Color(0xFFFF9800);
+    if (wl >= 1.0) return const Color(0xFFFFC107);
     return Colors.greenAccent;
+  }
+
+  static String _statusLabelFromLevel(double wl) {
+    if (wl >= 7.0) return 'Catastrophic';
+    if (wl >= 6.0) return 'Dangerous';
+    if (wl >= 5.0) return 'Extreme';
+    if (wl >= 4.0) return 'Severe';
+    if (wl >= 3.0) return 'Critical';
+    if (wl >= 2.0) return 'High';
+    if (wl >= 1.0) return 'Low';
+    return 'Safe';
   }
 
   void _showSensorDetails(SensorModel sensor) {
@@ -338,43 +365,45 @@ class _HomePageState extends State<HomePage> {
 
   // Sensor Card
   Widget _buildSensorCard(SensorModel sensor) {
-    Color statusColor;
+    final wl = sensor.waterLevel;
+    final statusColor = _colorFromLevel(wl);
+    final floodDescription = _statusLabelFromLevel(wl);
+
     IconData statusIcon;
-    String displayStatus;
-    String displayValue;
-    String floodDescription;
-    double glowIntensity = 0.1;
-    double fillPercentage = 1.0;
+    double glowIntensity;
+    double fillPercentage;
 
-    // Thresholds in feet — use per-sensor thresholds if set, else backend defaults
-    final normalFt = sensor.normalThresholdFt ?? 0.51;
-    final criticalFt = sensor.criticalThresholdFt ?? 1.50;
-
-    displayValue = '${sensor.waterLevel.toStringAsFixed(2)} ft';
-    displayStatus = sensor.status;
-
-    if (sensor.waterLevel >= criticalFt) {
-      statusColor = Colors.redAccent;
+    // Icon, glow & ring fill mapped to 7-level system
+    if (wl >= 7.0) {
+      statusIcon = Icons.warning_rounded;
+      glowIntensity = 0.45;
+      fillPercentage = 0.05;
+    } else if (wl >= 6.0) {
+      statusIcon = Icons.warning_rounded;
+      glowIntensity = 0.40;
+      fillPercentage = 0.10;
+    } else if (wl >= 5.0) {
       statusIcon = Icons.flood;
-      floodDescription = 'Critical Level';
-      glowIntensity = 0.3;
-      fillPercentage = 0.25;
-    } else if (sensor.waterLevel >= normalFt) {
-      statusColor = Colors.orangeAccent;
+      glowIntensity = 0.35;
+      fillPercentage = 0.15;
+    } else if (wl >= 4.0) {
+      statusIcon = Icons.flood;
+      glowIntensity = 0.30;
+      fillPercentage = 0.20;
+    } else if (wl >= 3.0) {
+      statusIcon = Icons.flood;
+      glowIntensity = 0.25;
+      fillPercentage = 0.30;
+    } else if (wl >= 2.0) {
       statusIcon = Icons.warning_amber_rounded;
-      floodDescription = 'Warning Level';
-      glowIntensity = 0.2;
-      fillPercentage = 0.60;
-    } else if (sensor.waterLevel >= 0.10) {
-      statusColor = Colors.yellowAccent;
+      glowIntensity = 0.20;
+      fillPercentage = 0.50;
+    } else if (wl >= 1.0) {
       statusIcon = Icons.water;
-      floodDescription = 'Low Flood';
-      glowIntensity = 0.1;
-      fillPercentage = 0.75;
+      glowIntensity = 0.15;
+      fillPercentage = 0.70;
     } else {
-      statusColor = Colors.greenAccent;
       statusIcon = Icons.house_outlined;
-      floodDescription = 'No Flood';
       glowIntensity = 0.05;
       fillPercentage = 1.0;
     }
@@ -448,43 +477,32 @@ class _HomePageState extends State<HomePage> {
                             Row(
                               children: [
                                 Text(
-                                  '$floodDescription - ',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w500,
+                                  floodDescription,
+                                  style: TextStyle(
+                                    color: statusColor,
+                                    fontWeight: FontWeight.bold,
                                     fontSize: 14,
                                   ),
                                 ),
                                 Text(
-                                  sensor.status,
-                                  style: TextStyle(
-                                    color: statusColor,
-                                    fontWeight: FontWeight.w500,
-                                    fontSize: 14,
+                                  ' (${wl.toStringAsFixed(2)} ft)',
+                                  style: const TextStyle(
+                                    color: Colors.white70,
+                                    fontWeight: FontWeight.w400,
+                                    fontSize: 13,
                                   ),
                                 ),
                               ],
                             ),
                             const SizedBox(height: 4),
-                            Row(
-                              children: [
-                                const Text(
-                                  'Water Level: ',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w500,
-                                    fontSize: 14,
-                                  ),
-                                ),
-                                Text(
-                                  displayValue,
-                                  style: TextStyle(
-                                    color: statusColor,
-                                    fontWeight: FontWeight.w500,
-                                    fontSize: 14,
-                                  ),
-                                ),
-                              ],
+                            Text(
+                              sensor.status,
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontWeight: FontWeight.w400,
+                                fontSize: 12,
+                                fontFamily: 'Poppins',
+                              ),
                             ),
                           ],
                         ),
@@ -785,39 +803,48 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // HELPER: Loading Skeleton
-  Widget _buildLoadingSkeleton({required double height}) {
-    return Container(
-      height: height,
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: const Color(0xFF16224A),
-        borderRadius: BorderRadius.circular(30),
-      ),
-      child: const Center(
-        child: CircularProgressIndicator(color: Colors.white),
-      ),
-    );
-  }
-
   // HELPER: Error Card
-  Widget _buildErrorCard(String error) {
+  Widget _buildErrorCard() {
     return Container(
-      height: 100,
       width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      margin: const EdgeInsets.symmetric(vertical: 4),
       decoration: BoxDecoration(
-        color: Colors.redAccent,
-        borderRadius: BorderRadius.circular(30),
+        color: const Color(0xFFFFF3E0),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFFFCC80)),
       ),
-      child: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: Text(
-            "Error: $error",
-            style: const TextStyle(color: Colors.white),
-            textAlign: TextAlign.center,
+      child: Row(
+        children: const [
+          Icon(Icons.wifi_off_rounded, color: Color(0xFFE65100), size: 28),
+          SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Unable to connect',
+                  style: TextStyle(
+                    color: Color(0xFFE65100),
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                    fontFamily: 'Poppins',
+                  ),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  'Check your internet or wait for the server to come online.',
+                  style: TextStyle(
+                    color: Color(0xFF795548),
+                    fontSize: 11,
+                    fontFamily: 'Poppins',
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -964,6 +991,7 @@ class _NeonRingPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }
+
 
 /// Data holder for a single hourly forecast slot in the weather card strip.
 class _HourlySlot {

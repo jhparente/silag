@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../models/profile_model.dart';
 import '../services/profile_service.dart';
+import '../widgets/skeleton_loader.dart';
 import 'subpages/edit_profile_page.dart'; // Adjust if your folder structure is slightly different
 import 'login.dart'; // Make sure this points to your actual login page file
 
@@ -162,11 +163,9 @@ class _ProfilePageState extends State<ProfilePage> {
         future: _profileFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(
-              child: CircularProgressIndicator(color: Color(0xFF101C45)),
-            );
+            return _buildProfileSkeleton();
           } else if (snapshot.hasError) {
-            return Center(child: Text("Error: ${snapshot.error}"));
+            return _buildProfileErrorCard();
           } else if (!snapshot.hasData) {
             return const Center(child: Text("Profile not found."));
           }
@@ -449,6 +448,86 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// Skeleton layout shown while the profile is loading.
+  Widget _buildProfileSkeleton() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: const [
+          ProfileHeaderSkeleton(),
+          SizedBox(height: 25),
+          LightShimmerBox(height: 18, width: 180, borderRadius: 6),
+          SizedBox(height: 15),
+          LightShimmerBox(height: 60, borderRadius: 12),
+          SizedBox(height: 15),
+          LightShimmerBox(height: 60, borderRadius: 12),
+          SizedBox(height: 15),
+          LightShimmerBox(height: 60, borderRadius: 12),
+          SizedBox(height: 25),
+          LightShimmerBox(height: 18, width: 200, borderRadius: 6),
+          SizedBox(height: 15),
+          LightShimmerBox(height: 120, borderRadius: 15),
+        ],
+      ),
+    );
+  }
+
+  /// Friendly card shown when the profile fetch fails (e.g. no network).
+  Widget _buildProfileErrorCard() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.wifi_off_rounded,
+              color: Color(0xFFE65100),
+              size: 48,
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Unable to load profile',
+              style: TextStyle(
+                color: Color(0xFF101C45),
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+                fontFamily: 'Poppins',
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Check your connection or wait for the server to come online.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.black54,
+                fontSize: 13,
+                fontFamily: 'Poppins',
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              onPressed: () => setState(() {
+                _profileFuture = _profileService.fetchUserProfile();
+              }),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF101C45),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              icon: const Icon(Icons.refresh),
+              label: const Text('Retry', style: TextStyle(fontFamily: 'Poppins')),
+            ),
+          ],
+        ),
       ),
     );
   }
