@@ -55,10 +55,10 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _refreshData() async {
     setState(() {
-      _weatherFuture = _weatherService.fetchWeather();
+      // Force a fresh fetch from the network on pull-to-refresh
+      _weatherFuture = _weatherService.fetchWeather(forceRefresh: true);
       _sensorsFuture = _sensorService.fetchSensors();
     });
-    // Wait for both futures to complete so the RefreshIndicator stops spinning
     await Future.wait([_weatherFuture, _sensorsFuture]);
   }
 
@@ -528,64 +528,46 @@ class _HomePageState extends State<HomePage> {
 
   // Weather Card
   Widget _buildWeatherCard(WeatherModel weather) {
-    // Build the 5-slot hourly forecast strip centred on "Now".
-    // Strategy: pick up to 2 entries before current hour, current hour, then up to 2 after.
-    final now = DateTime.now();
+    // Always build slots relative to the current local time so the widget
+    // stays accurate no matter when the weather data was fetched.
+    final now = DateTime.now(); // device local time (Philippines UTC+8)
     final hourly = weather.hourly;
 
-    // Find the index of the closest hourly entry to now
-    int nowIndex = 0;
-    if (hourly.isNotEmpty) {
-      int closest = 0;
-      Duration closestDiff = (hourly[0].time.difference(now)).abs();
-      for (int i = 1; i < hourly.length; i++) {
-        final diff = (hourly[i].time.difference(now)).abs();
-        if (diff < closestDiff) {
-          closestDiff = diff;
-          closest = i;
-        }
-      }
-      nowIndex = closest;
-    }
-
-    // Pick indices: 2 before, current, 2 after — clamped to available range
     final List<_HourlySlot> slots = [];
-    final int total = hourly.length;
-    if (total == 0) {
-      // Fallback: show 5 time-based placeholders when no hourly data
-      for (int offset = -2; offset <= 2; offset++) {
-        final slotTime = now.add(Duration(hours: offset));
-        final isNow = offset == 0;
+
+    for (int offset = 0; offset <= 4; offset++) {
+      final targetTime = now.add(Duration(hours: offset));
+      final isNow = offset == 0;
+
+      if (hourly.isEmpty) {
+        // No hourly data — show placeholders with correct local times
         slots.add(_HourlySlot(
-          label: isNow ? 'Now' : _formatHour(slotTime),
+          label: isNow ? 'Now' : _formatHour(targetTime),
           iconCode: weather.iconCode,
           rainChance: (weather.rainChance * 100).round(),
           isNow: isNow,
         ));
-      }
-    } else {
-      for (int offset = -2; offset <= 2; offset++) {
-        final idx = nowIndex + offset;
-        final isNow = offset == 0;
-        if (idx >= 0 && idx < total) {
-          final entry = hourly[idx];
-          slots.add(_HourlySlot(
-            label: isNow ? 'Now' : _formatHour(entry.time),
-            iconCode: entry.iconCode,
-            rainChance: entry.rainChance,
-            isNow: isNow,
-          ));
-        } else {
-          // Out-of-range slot: show a synthetic time
-          final syntheticTime = (nowIndex < total ? hourly[nowIndex].time : now)
-              .add(Duration(hours: offset));
-          slots.add(_HourlySlot(
-            label: _formatHour(syntheticTime),
-            iconCode: weather.iconCode,
-            rainChance: (weather.rainChance * 100).round(),
-            isNow: false,
-          ));
+      } else {
+        // Find the hourly entry whose time is closest to targetTime.
+        // WeatherAPI returns local-time strings e.g. "2026-05-11 18:00",
+        // parsed by DateTime.tryParse as local DateTime — so we compare hours directly.
+        HourlyWeatherEntry best = hourly[0];
+        int bestDiff = (hourly[0].time.hour - targetTime.hour).abs();
+
+        for (final entry in hourly) {
+          final diff = (entry.time.hour - targetTime.hour).abs();
+          if (diff < bestDiff) {
+            bestDiff = diff;
+            best = entry;
+          }
         }
+
+        slots.add(_HourlySlot(
+          label: isNow ? 'Now' : _formatHour(targetTime),
+          iconCode: best.iconCode,
+          rainChance: best.rainChance,
+          isNow: isNow,
+        ));
       }
     }
 
@@ -609,17 +591,8 @@ class _HomePageState extends State<HomePage> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Image.network(
-                'https://openweathermap.org/img/wn/${weather.iconCode}@4x.png',
-                width: 130,
-                height: 130,
-                fit: BoxFit.contain,
-                errorBuilder: (context, error, stackTrace) => Icon(
-                  _iconCodeToIcon(weather.iconCode),
-                  size: 100,
-                  color: Colors.lightBlueAccent,
-                ),
-              ),
+              // Local weather icon based on condition
+              _buildWeatherIcon(weather.iconCode, size: 130),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -684,32 +657,104 @@ class _HomePageState extends State<HomePage> {
   }
 
   /// Formats a DateTime as a 12-hour hour label e.g. "3 AM", "2 PM".
+  /// Uses device local time (Philippines UTC+8).
   String _formatHour(DateTime dt) {
-    final h = dt.hour;
+    // dt from hourly list has no timezone info — treat it as local time directly
+    final h = dt.toLocal().hour;
     if (h == 0) return '12 AM';
     if (h < 12) return '$h AM';
     if (h == 12) return '12 PM';
     return '${h - 12} PM';
   }
 
-  /// Maps an OpenWeatherMap icon code to a fallback Material icon.
-  /// OWM codes look like "01d", "04n" — strip the trailing d/n to get the numeric part.
-  IconData _iconCodeToIcon(String code) {
+  /// Returns the local asset path for a given weather icon/condition code.
+  /// Supports both OWM-style codes ("01d") and WeatherAPI icon URL strings.
+  Widget _buildWeatherIcon(String iconCode, {double size = 40}) {
+    final asset = _iconAssetFromCode(iconCode);
+    return Image.asset(
+      asset,
+      width: size,
+      height: size,
+      fit: BoxFit.contain,
+      errorBuilder: (_, __, ___) => Icon(
+        _iconCodeToIcon(iconCode),
+        color: Colors.lightBlueAccent,
+        size: size * 0.8,
+      ),
+    );
+  }
+
+  /// Maps a weather icon code to one of our local icon assets.
+  /// Automatically switches to night variants (moon, cloudy moon) between 6 PM – 6 AM.
+  String _iconAssetFromCode(String code) {
+    final hour = DateTime.now().hour;
+    final isNight = hour >= 18 || hour < 6; // 6 PM → 6 AM = night
+
+    // WeatherAPI icon URLs look like "//cdn.weatherapi.com/weather/64x64/day/113.png"
+    if (code.contains('/')) {
+      final match = RegExp(r'/(\d+)\.png').firstMatch(code);
+      if (match != null) {
+        final num = int.tryParse(match.group(1) ?? '') ?? 0;
+        return _iconFromWeatherApiCode(num, isNight: isNight);
+      }
+    }
+
+    // OWM codes: "01d", "02d", "09n", etc.
+    // Strip the trailing d/n — we use real-time hour for day/night instead.
     final c = code.replaceAll(RegExp(r'[dn]$'), '');
     switch (c) {
-      case '01': return Icons.wb_sunny;        // clear sky
-      case '02': return Icons.wb_cloudy;        // few clouds
-      case '03': return Icons.cloud;            // scattered clouds
-      case '04': return Icons.cloud_queue;      // broken/overcast clouds
-      case '09': return Icons.grain;            // shower rain
-      case '10': return Icons.water_drop;       // rain
-      case '11': return Icons.bolt;             // thunderstorm
-      case '13': return Icons.ac_unit;          // snow
-      case '50': return Icons.foggy;            // mist
-      default:   return Icons.wb_cloudy;
+      case '01':
+        return isNight ? 'icons/moon (2).png' : 'icons/sun (1).png';
+      case '02':
+        return isNight ? 'icons/cloudy moon.png' : 'icons/sun with cloud.png';
+      case '03':
+      case '04':
+        return isNight ? 'icons/cloudy moon.png' : 'icons/cloudy.png';
+      case '09':
+      case '11':
+        return 'icons/heavy rain.png'; // same day/night
+      case '10':
+        return 'icons/rainy.png';
+      case '13':
+      case '50':
+        return isNight ? 'icons/cloudy moon.png' : 'icons/cloudy.png';
+      default:
+        return isNight ? 'icons/moon (2).png' : 'icons/sun with cloud.png';
     }
   }
 
+  /// WeatherAPI numeric condition codes → local icon (day/night aware).
+  String _iconFromWeatherApiCode(int code, {required bool isNight}) {
+    if (code == 113) {
+      return isNight ? 'icons/moon (2).png' : 'icons/sun (1).png';
+    }
+    if (code == 116) {
+      return isNight ? 'icons/cloudy moon.png' : 'icons/sun with cloud.png';
+    }
+    if (code == 119 || code == 122) {
+      return isNight ? 'icons/cloudy moon.png' : 'icons/cloudy.png';
+    }
+    if (code >= 176 && code <= 185) return 'icons/rainy.png';
+    if (code >= 200 && code <= 232) return 'icons/heavy rain.png';
+    if (code >= 293 && code <= 321) return 'icons/rainy.png';
+    if (code >= 353 && code <= 395) return 'icons/heavy rain.png';
+    // Default fallback
+    return isNight ? 'icons/moon (2).png' : 'icons/sun with cloud.png';
+  }
+
+  /// Material icon fallback for error cases.
+  IconData _iconCodeToIcon(String code) {
+    if (code.contains('113') || code.contains('01')) return Icons.wb_sunny;
+    if (code.contains('116') || code.contains('02')) return Icons.wb_cloudy;
+    if (code.contains('09') || code.contains('11') ||
+        code.contains('rain') || code.contains('thunder')) {
+      return Icons.water_drop;
+    }
+    if (code.contains('cloud') || code.contains('03') || code.contains('04')) {
+      return Icons.cloud;
+    }
+    return Icons.wb_cloudy;
+  }
 
   // HELPER: Single Weather Detail (Humidity, Wind, Rain)
   Widget _buildWeatherDetail(String label, String value) {
@@ -776,18 +821,8 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
           const SizedBox(height: 6),
-          // Real OWM weather icon image
-          Image.network(
-            'https://openweathermap.org/img/wn/${slot.iconCode}@2x.png',
-            width: 32,
-            height: 32,
-            fit: BoxFit.contain,
-            errorBuilder: (_, __, ___) => Icon(
-              _iconCodeToIcon(slot.iconCode),
-              color: Colors.white,
-              size: 20,
-            ),
-          ),
+          // Local weather icon
+          _buildWeatherIcon(slot.iconCode, size: 32),
           const SizedBox(height: 4),
           // Rain chance percentage
           Text(

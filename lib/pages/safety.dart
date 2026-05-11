@@ -26,6 +26,7 @@ class _SafetyPageState extends State<SafetyPage> {
   late Future<List<HotlineModel>> _hotlinesFuture;
   late Future<List<EvacuationModel>> _evacuationCentersFuture;
   bool _isRequestingEvacuation = false;
+  int _localHotlineCount = 0; // tracks only the user's local hotlines
 
   // Evacuation request status tracking
   String? _myEvacuationStatus; // 'pending' | 'accepted' | null
@@ -102,6 +103,51 @@ class _SafetyPageState extends State<SafetyPage> {
       _hotlinesFuture = _hotlineService.fetchMyHotlines();
       _evacuationCentersFuture = _evacuationService.fetchEvacuationCenters();
     });
+  }
+
+  Future<void> _deleteHotline(HotlineModel hotline) async {
+    // Safety guard — only local hotlines (ownerId != null) can be deleted
+    if (hotline.ownerId == null) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text(
+          'Delete Contact',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        content: Text(
+          'Remove "${hotline.name}" from your local hotlines?',
+          style: const TextStyle(fontFamily: 'Poppins'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await _hotlineService.deleteLocalHotline(hotline.id);
+      _refreshList();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString().replaceAll('Exception: ', '')),
+          ),
+        );
+      }
+    }
   }
 
   String _cleanExceptionMessage(Object error) {
@@ -248,28 +294,14 @@ class _SafetyPageState extends State<SafetyPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // --- HEADER ---
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  "Emergency Hotlines",
-                  style: TextStyle(
-                    color: Color(0xFF101C45),
-                    fontWeight: FontWeight.bold,
-                    fontSize: 18,
-                    fontFamily: 'Poppins',
-                  ),
-                ),
-                IconButton(
-                  onPressed: _showAddContactDialog,
-                  icon: const Icon(
-                    Icons.add_circle_outline,
-                    size: 24,
-                    color: Color(0xFF101C45),
-                  ),
-                  tooltip: "Add Contact",
-                ),
-              ],
+            const Text(
+              "Emergency Hotlines",
+              style: TextStyle(
+                color: Color(0xFF101C45),
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
+                fontFamily: 'Poppins',
+              ),
             ),
             const SizedBox(height: 5),
 
@@ -291,17 +323,37 @@ class _SafetyPageState extends State<SafetyPage> {
 
                 final hotlines = snapshot.data!;
 
-                if (hotlines.isEmpty) {
-                  return const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 20),
-                    child: Center(child: Text("No contacts found.")),
-                  );
-                }
+                // Split into global (owner_id == null) and local (user-owned)
+                final globalHotlines =
+                    hotlines.where((h) => h.ownerId == null).toList();
+                final localHotlines =
+                    hotlines.where((h) => h.ownerId != null).toList();
+
+                // Sync local count for the add-button limit check
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted &&
+                      _localHotlineCount != localHotlines.length) {
+                    setState(
+                        () => _localHotlineCount = localHotlines.length);
+                  }
+                });
 
                 return Column(
-                  children: hotlines
-                      .map((hotline) => _buildHotlineCard(hotline))
-                      .toList(),
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // ── GLOBAL HOTLINES ──────────────────────────────
+                    if (globalHotlines.isNotEmpty) ..._buildGlobalSection(globalHotlines),
+
+                    // Separator between sections
+                    if (globalHotlines.isNotEmpty)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 12),
+                        child: Divider(color: Color(0xFFE8ECF4), thickness: 1),
+                      ),
+
+                    // ── LOCAL HOTLINES ───────────────────────────────
+                    _buildLocalSection(localHotlines),
+                  ],
                 );
               },
             ),
@@ -782,64 +834,262 @@ class _SafetyPageState extends State<SafetyPage> {
     );
   }
 
-  // --- HOTLINE CARD HELPER ---
-  Widget _buildHotlineCard(HotlineModel hotline) {
+  // ── GLOBAL HOTLINES SECTION ──────────────────────────────────────────────
+  List<Widget> _buildGlobalSection(List<HotlineModel> globals) {
+    return [
+      Row(
+        children: [
+          const Icon(Icons.shield_rounded, size: 14, color: Color(0xFF6B7BA4)),
+          const SizedBox(width: 4),
+          const Text(
+            'Official Hotlines',
+            style: TextStyle(
+              fontFamily: 'Poppins',
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF6B7BA4),
+              letterSpacing: 0.5,
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 8),
+      ...globals.map((h) => _buildHotlineCard(h, isLocal: false)),
+    ];
+  }
+
+  // ── LOCAL HOTLINES SECTION ───────────────────────────────────────────────
+  Widget _buildLocalSection(List<HotlineModel> locals) {
+    final slotsLeft = 3 - locals.length;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Sub-header row with Add button
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.person_rounded, size: 14,
+                    color: Color(0xFF6B7BA4)),
+                const SizedBox(width: 4),
+                const Text(
+                  'My Contacts',
+                  style: TextStyle(
+                    fontFamily: 'Poppins',
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF6B7BA4),
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: locals.length >= 3
+                        ? Colors.orange.withValues(alpha: 0.15)
+                        : const Color(0xFF101C45).withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    '${locals.length}/3',
+                    style: TextStyle(
+                      fontFamily: 'Poppins',
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: locals.length >= 3
+                          ? Colors.orange
+                          : const Color(0xFF101C45),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            Tooltip(
+              message: locals.length >= 3
+                  ? 'Maximum 3 personal hotlines'
+                  : 'Add personal hotline',
+              child: GestureDetector(
+                onTap: locals.length >= 3 ? null : _showAddContactDialog,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: locals.length >= 3
+                        ? Colors.grey.withValues(alpha: 0.1)
+                        : const Color(0xFF101C45),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.add_rounded,
+                        size: 14,
+                        color: locals.length >= 3
+                            ? Colors.grey
+                            : Colors.white,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Add',
+                        style: TextStyle(
+                          fontFamily: 'Poppins',
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: locals.length >= 3
+                              ? Colors.grey
+                              : Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+
+        if (locals.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            child: Center(
+              child: Column(
+                children: const [
+                  Icon(Icons.contact_phone_outlined,
+                      size: 32, color: Color(0xFFCED4E6)),
+                  SizedBox(height: 6),
+                  Text(
+                    'No personal hotlines yet.',
+                    style: TextStyle(
+                        fontFamily: 'Poppins',
+                        fontSize: 12,
+                        color: Colors.grey),
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    'Tap Add to save up to 3 contacts.',
+                    style: TextStyle(
+                        fontFamily: 'Poppins',
+                        fontSize: 10,
+                        color: Colors.grey),
+                  ),
+                ],
+              ),
+            ),
+          )
+        else
+          ...locals.map((h) => _buildHotlineCard(h, isLocal: true)),
+
+        // Hint text
+        if (locals.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 4, bottom: 4),
+            child: Text(
+              slotsLeft > 0
+                  ? '$slotsLeft slot${slotsLeft == 1 ? '' : 's'} remaining · Long-press to delete'
+                  : 'Maximum reached · Long-press to delete',
+              style: TextStyle(
+                fontFamily: 'Poppins',
+                fontSize: 10,
+                color: slotsLeft > 0 ? Colors.grey : Colors.orange,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+      ],
+    );
+  }
+
+  // ── HOTLINE CARD ─────────────────────────────────────────────────────────
+  Widget _buildHotlineCard(HotlineModel hotline, {required bool isLocal}) {
     return GestureDetector(
       onTap: () => _makePhoneCall(hotline.number),
+      onLongPress: isLocal ? () => _deleteHotline(hotline) : null,
       child: Container(
         margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
         decoration: BoxDecoration(
-          color: const Color(0xFF101C45),
+          color: isLocal
+              ? const Color(0xFF1A2755)
+              : const Color(0xFF101C45),
           borderRadius: BorderRadius.circular(15),
+          border: isLocal
+              ? Border.all(
+                  color: Colors.white.withValues(alpha: 0.08), width: 1)
+              : null,
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.1),
-              blurRadius: 5,
+              color: Colors.black.withValues(alpha: 0.12),
+              blurRadius: 6,
               offset: const Offset(0, 3),
             ),
           ],
         ),
         child: Row(
           children: [
-            // Title
+            // Badge icon
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                isLocal ? Icons.person_rounded : Icons.shield_rounded,
+                color: isLocal ? Colors.lightBlueAccent : Colors.white70,
+                size: 16,
+              ),
+            ),
+            const SizedBox(width: 12),
+            // Name
             Expanded(
               flex: 5,
               child: Text(
                 hotline.name,
                 style: const TextStyle(
                   color: Colors.white,
-                  fontSize: 11,
+                  fontSize: 12,
                   fontWeight: FontWeight.bold,
                   fontFamily: 'Poppins',
                   height: 1.2,
                 ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
             // Divider
             Container(
-              height: 30,
+              height: 28,
               width: 1,
-              color: Colors.white,
-              margin: const EdgeInsets.fromLTRB(10, 0, 10, 0),
+              color: Colors.white24,
+              margin: const EdgeInsets.symmetric(horizontal: 10),
             ),
-            // Number & Icon
+            // Number & phone icon
             Expanded(
               flex: 4,
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text(
-                    hotline.number,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
-                      fontFamily: 'Poppins',
+                  Flexible(
+                    child: Text(
+                      hotline.number,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        fontFamily: 'Poppins',
+                      ),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  const Icon(Icons.phone, color: Colors.greenAccent, size: 16),
+                  const SizedBox(width: 6),
+                  const Icon(Icons.phone_rounded,
+                      color: Colors.greenAccent, size: 16),
                 ],
               ),
             ),
@@ -850,6 +1100,15 @@ class _SafetyPageState extends State<SafetyPage> {
   }
 
   void _showAddContactDialog() {
+    if (_localHotlineCount >= 3) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('You can only save up to 3 personal hotlines.'),
+        ),
+      );
+      return;
+    }
+
     final nameController = TextEditingController();
     final numberController = TextEditingController();
 
@@ -857,12 +1116,21 @@ class _SafetyPageState extends State<SafetyPage> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text(
-          "Add Contact",
+          "Add Local Hotline",
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            const Text(
+              'You can save up to 3 personal hotlines.',
+              style: TextStyle(
+                fontSize: 11,
+                color: Colors.grey,
+                fontFamily: 'Poppins',
+              ),
+            ),
+            const SizedBox(height: 12),
             TextField(
               controller: nameController,
               maxLength: 20,
@@ -895,7 +1163,6 @@ class _SafetyPageState extends State<SafetyPage> {
             onPressed: () async {
               if (nameController.text.isNotEmpty &&
                   numberController.text.isNotEmpty) {
-                // Capitalize the name logic
                 String rawName = nameController.text;
                 String capitalizedName = rawName
                     .split(' ')
@@ -906,17 +1173,15 @@ class _SafetyPageState extends State<SafetyPage> {
                     )
                     .join(' ');
 
-                // Wrapped in a try/catch to handle network errors safely
                 try {
                   await _hotlineService.addLocalHotline(
                     capitalizedName,
                     numberController.text,
                   );
-                  _refreshList(); // Fetch the newly updated list
-                  if (context.mounted) Navigator.pop(context); // Close dialog
+                  _refreshList();
+                  if (context.mounted) Navigator.pop(context);
                 } catch (e) {
                   if (context.mounted) {
-                    // Show a popup if the backend rejects it or Wi-Fi is down
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text(

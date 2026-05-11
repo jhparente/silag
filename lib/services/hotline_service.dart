@@ -102,4 +102,34 @@ class HotlineService {
       throw Exception('Server error: $e');
     }
   }
+
+  Future<void> deleteLocalHotline(int contactId) async {
+    try {
+      final token = await _storage.read(key: 'jwt_token');
+      if (token == null) throw Exception("Please log in.");
+
+      final response = await http.delete(
+        _buildUri('delete_local_hotline/$contactId'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Accept': 'application/json',
+        },
+      );
+
+      final Map<String, dynamic> responseBody = jsonDecode(response.body);
+      if (response.statusCode != 200 || responseBody['status'] != 'success') {
+        throw Exception(responseBody['detail'] ?? 'Failed to delete contact.');
+      }
+    } catch (e) {
+      final errStr = e.toString();
+      if (errStr.contains('ClientException') ||
+          errStr.contains('SocketException') ||
+          errStr.contains('Failed to fetch') ||
+          errStr.contains('Connection refused') ||
+          errStr.contains('Network is unreachable')) {
+        throw Exception('Network error. Please try again.');
+      }
+      rethrow;
+    }
+  }
 }

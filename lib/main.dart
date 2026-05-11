@@ -7,6 +7,8 @@ import 'services/auth_service.dart';
 import 'services/api_client.dart';
 import 'services/ban_check_service.dart';
 import 'services/push_token_service.dart';
+import 'services/connectivity_service.dart';
+import 'widgets/connectivity_wrapper.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -19,6 +21,9 @@ Future<void> main() async {
   if (existingToken != null && existingToken.isNotEmpty) {
     BanCheckService().start();
   }
+
+  // Start monitoring internet + backend reachability
+  ConnectivityService().start();
 
   runApp(const MyApp());
 }
@@ -35,7 +40,6 @@ class MyApp extends StatelessWidget {
 
       // Use ApiClient.navigatorKey — this is the SAME key ApiClient uses
       // internally to call pushNamedAndRemoveUntil('/login').
-      // Using a separate key was the bug — the navigator was always null.
       navigatorKey: ApiClient.navigatorKey,
 
       routes: {
@@ -43,7 +47,7 @@ class MyApp extends StatelessWidget {
           final reason = ModalRoute.of(context)?.settings.arguments as String?;
           return Login(initialErrorMessage: reason);
         },
-        '/home': (context) => const MainScreen(),
+        '/home': (context) => const ConnectivityWrapper(child: MainScreen()),
       },
 
       home: FutureBuilder<String?>(
@@ -61,7 +65,7 @@ class MyApp extends StatelessWidget {
           if (snapshot.hasData &&
               snapshot.data != null &&
               snapshot.data!.isNotEmpty) {
-            return const MainScreen();
+            return const ConnectivityWrapper(child: MainScreen());
           }
 
           return const Login();

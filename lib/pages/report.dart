@@ -517,19 +517,22 @@ class _ReportPageState extends State<ReportPage> {
           // Section heading
           const LightShimmerBox(height: 18, width: 160, borderRadius: 6),
           const SizedBox(height: 10),
-          // Horizontal image cards
+          // Horizontal image cards — use ListView to avoid overflow
           SizedBox(
             height: 180,
-            child: Row(
-              children: List.generate(
-                3,
-                (_) => Container(
-                  width: 200,
-                  margin: const EdgeInsets.only(right: 15),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF0F3FF),
-                    borderRadius: BorderRadius.circular(15),
-                  ),
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: 3,
+              itemBuilder: (_, __) => Container(
+                width: 200,
+                margin: const EdgeInsets.only(right: 15),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF0F3FF),
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(15),
                   child: const LightShimmerBox(height: 180, borderRadius: 15),
                 ),
               ),
@@ -549,16 +552,19 @@ class _FloodReportRowSkeleton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: List.generate(
-        3,
-        (_) => Container(
-          width: 200,
-          margin: const EdgeInsets.only(right: 15),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF0F3FF),
-            borderRadius: BorderRadius.circular(15),
-          ),
+    return ListView.builder(
+      scrollDirection: Axis.horizontal,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: 3,
+      itemBuilder: (_, __) => Container(
+        width: 200,
+        margin: const EdgeInsets.only(right: 15),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF0F3FF),
+          borderRadius: BorderRadius.circular(15),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(15),
           child: const LightShimmerBox(height: 180, borderRadius: 15),
         ),
       ),
