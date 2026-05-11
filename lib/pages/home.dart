@@ -564,8 +564,10 @@ class _HomePageState extends State<HomePage> {
 
         slots.add(_HourlySlot(
           label: isNow ? 'Now' : _formatHour(targetTime),
-          iconCode: best.iconCode,
-          rainChance: best.rainChance,
+          // "Now" always uses the current conditions icon (same as main card)
+          // so both icons always match. Future slots use the forecast entry.
+          iconCode: isNow ? weather.iconCode : best.iconCode,
+          rainChance: isNow ? (weather.rainChance * 100).round() : best.rainChance,
           isNow: isNow,
         ));
       }
