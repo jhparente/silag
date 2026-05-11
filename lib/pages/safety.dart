@@ -221,11 +221,25 @@ class _SafetyPageState extends State<SafetyPage> {
         longitude: position.longitude,
       );
 
+      // Immediately switch the card to PENDING — no need to wait for the
+      // background poller to fire. This prevents the button from being
+      // clickable again after a successful request.
       if (mounted) {
+        setState(() => _myEvacuationStatus = 'pending');
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text(
-              'Evacuation request sent. Keep your phone nearby for updates.',
+            backgroundColor: Color(0xFF101C45),
+            content: Row(
+              children: [
+                Icon(Icons.check_circle_outline, color: Colors.white, size: 18),
+                SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Evacuation request sent. Keep your phone nearby for updates.',
+                    style: TextStyle(color: Colors.white, fontFamily: 'Poppins'),
+                  ),
+                ),
+              ],
             ),
           ),
         );
@@ -234,8 +248,10 @@ class _SafetyPageState extends State<SafetyPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
+            backgroundColor: Colors.red.shade700,
             content: Text(
               'Could not send evacuation request: ${_cleanExceptionMessage(e)}',
+              style: const TextStyle(color: Colors.white, fontFamily: 'Poppins'),
             ),
           ),
         );
