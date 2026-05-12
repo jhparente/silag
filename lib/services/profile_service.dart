@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'api_config.dart';
+import 'api_client.dart';
 import '../models/profile_model.dart';
 
 class ProfileService {
@@ -33,12 +34,8 @@ class ProfileService {
         throw Exception("Please log in.");
       }
 
-      final response = await http.get(
+      final response = await ApiClient().get(
         _buildUri('users/$userId/profile'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Accept': 'application/json',
-        },
       );
 
       if (response.statusCode == 200) {
@@ -47,6 +44,10 @@ class ProfileService {
         if (responseBody['status'] == 'success') {
           return ProfileModel.fromJson(responseBody['data']);
         }
+      }
+
+      if (response.statusCode == 401) {
+        throw Exception("Session expired. Redirecting to login...");
       }
 
       if (response.statusCode == 404) {
@@ -87,11 +88,6 @@ class ProfileService {
       final uri = _buildUri('users/$userId/profile');
       final request = http.MultipartRequest('PUT', uri);
 
-      request.headers.addAll({
-        'Authorization': 'Bearer $token',
-        'Accept': 'application/json',
-      });
-
       if (username != null && username.isNotEmpty) {
         request.fields['username'] = username;
       }
@@ -112,10 +108,13 @@ class ProfileService {
         );
       }
 
-      final streamedResponse = await request.send();
+      final streamedResponse = await ApiClient().sendMultipart(request);
       final response = await http.Response.fromStream(streamedResponse);
 
       if (response.statusCode != 200) {
+        if (response.statusCode == 401) {
+          throw Exception("Session expired. Redirecting to login...");
+        }
         final body = jsonDecode(response.body);
         throw Exception(
           body['detail'] ??
@@ -150,12 +149,8 @@ class ProfileService {
       // If there's no token, they are effectively already logged out locally
       if (token == null) return true;
 
-      final response = await http.post(
+      final response = await ApiClient().post(
         _buildUri('logout'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Accept': 'application/json',
-        },
       );
 
       // If Python returns 200 OK, the backend successfully cleared the tokens!

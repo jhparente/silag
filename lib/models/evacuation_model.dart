@@ -5,6 +5,9 @@ class EvacuationModel {
   final String evacuationImageUrl; // Clean Dart camelCase!
   final double latitude;
   final double longitude;
+  final int maxCapacity;
+  final int currentOccupancyFamily;
+  final int currentOccupancyIndividual;
 
   EvacuationModel({
     required this.id,
@@ -13,6 +16,9 @@ class EvacuationModel {
     required this.evacuationImageUrl,
     required this.latitude,
     required this.longitude,
+    required this.maxCapacity,
+    required this.currentOccupancyFamily,
+    required this.currentOccupancyIndividual,
   });
 
   factory EvacuationModel.fromJson(Map<String, dynamic> json) {
@@ -26,6 +32,9 @@ class EvacuationModel {
 
       latitude: (json['latitude'] as num?)?.toDouble() ?? 0.0,
       longitude: (json['longitude'] as num?)?.toDouble() ?? 0.0,
+      maxCapacity: (json['max_capacity'] as num?)?.toInt() ?? 0,
+      currentOccupancyFamily: (json['current_occupancy_family'] as num?)?.toInt() ?? 0,
+      currentOccupancyIndividual: (json['current_occupancy_individual'] as num?)?.toInt() ?? 0,
     );
   }
 }

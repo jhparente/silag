@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'pages/home.dart';
 import 'pages/report.dart';
 import 'pages/safety.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -22,6 +23,45 @@ class _MainScreenState extends State<MainScreen> {
   void _onItemTapped(int index) {
     setState(() {
       _currentIndex = index;
+    });
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      if (!mounted) return;
+      
+      final title = message.notification?.title ?? message.data['title'] ?? 'Notification';
+      final body = message.notification?.body ?? message.data['body'] ?? '';
+      final type = message.data['type'];
+
+      if (title.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white, fontFamily: 'Poppins')),
+                if (body.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(body, style: const TextStyle(color: Colors.white, fontSize: 13, fontFamily: 'Poppins')),
+                ],
+              ],
+            ),
+            backgroundColor: type == 'evacuation_accepted'
+                ? Colors.green.shade700
+                : type == 'report_accepted'
+                    ? const Color(0xFF1565C0)   // blue — report published
+                    : const Color(0xFF162455),  // default navy
+            duration: const Duration(seconds: 7),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            margin: const EdgeInsets.all(16),
+          ),
+        );
+      }
     });
   }
 

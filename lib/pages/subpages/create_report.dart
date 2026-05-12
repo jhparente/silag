@@ -27,11 +27,11 @@ class _CreateReportPageState extends State<CreateReportPage> {
 
   // Form Controllers
   final _descriptionController = TextEditingController();
-  String _selectedFloodLevel = '1 ft - Low (Advisory)';
+  String _selectedFloodLevel = '1 ft - Low';
 
   final List<String> _floodLevels = [
-    '1 ft - Low (Advisory)',
-    '2 ft - High (Warning)',
+    '1 ft - Low',
+    '2 ft - High',
     '3 ft - Critical',
     '4 ft - Severe',
     '5 ft - Extreme',
@@ -170,7 +170,7 @@ class _CreateReportPageState extends State<CreateReportPage> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Report submitted successfully!")),
+          const SnackBar(content: Text("Report submitted, pending admin review")),
         );
         Navigator.pop(context, true);
       }

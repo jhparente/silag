@@ -3,9 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:silag/models/evacuation_model.dart';
+import 'package:silag/models/sensor_model.dart';
 import 'package:silag/pages/subpages/evacuation_map_page.dart';
+import 'package:silag/pages/subpages/site_overview_map_page.dart';
 import 'package:silag/services/evacuation_request_service.dart';
 import 'package:silag/services/evacuation_service.dart';
+import 'package:silag/services/sensor_service.dart';
 import 'package:silag/widgets/skeleton_loader.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/hotline_service.dart';
@@ -22,9 +25,12 @@ class _SafetyPageState extends State<SafetyPage> {
   final _hotlineService = HotlineService();
   final _evacuationService = EvacuationService();
   final _evacuationRequestService = EvacuationRequestService();
+  final _sensorService = SensorService();
 
   late Future<List<HotlineModel>> _hotlinesFuture;
   late Future<List<EvacuationModel>> _evacuationCentersFuture;
+  List<SensorModel> _cachedSensors = [];
+  List<EvacuationModel> _cachedEvacuationSites = [];
   bool _isRequestingEvacuation = false;
   int _localHotlineCount = 0; // tracks only the user's local hotlines
 
@@ -37,7 +43,13 @@ class _SafetyPageState extends State<SafetyPage> {
   void initState() {
     super.initState();
     _hotlinesFuture = _hotlineService.fetchMyHotlines();
-    _evacuationCentersFuture = _evacuationService.fetchEvacuationCenters();
+    _evacuationCentersFuture = _evacuationService.fetchEvacuationCenters().then((sites) {
+      _cachedEvacuationSites = sites;
+      return sites;
+    });
+    _sensorService.fetchSensors().then((s) {
+      if (mounted) setState(() => _cachedSensors = s);
+    }).catchError((_) {});
     _startStatusPolling();
 
     // Listen for foreground FCM messages
@@ -294,6 +306,8 @@ class _SafetyPageState extends State<SafetyPage> {
           destLatitude: site.latitude,
           destLongitude: site.longitude,
           destName: site.name,
+          otherSites: _cachedEvacuationSites, // all sites, incl. destination (it still gets the red pin)
+          sensors: _cachedSensors,
         ),
       ),
     );
@@ -390,14 +404,47 @@ class _SafetyPageState extends State<SafetyPage> {
             const SizedBox(height: 35),
 
             // --- EVACUATION CENTERS LIST ---
-            const Text(
-              "Evacuation Centers",
-              style: TextStyle(
-                color: Color(0xFF101C45),
-                fontWeight: FontWeight.bold,
-                fontSize: 18,
-                fontFamily: 'Poppins',
-              ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  "Evacuation Centers",
+                  style: TextStyle(
+                    color: Color(0xFF101C45),
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18,
+                    fontFamily: 'Poppins',
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => SiteOverviewMapPage(
+                          sites: _cachedEvacuationSites,
+                          sensors: _cachedSensors,
+                        ),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.map_outlined, size: 16, color: Color(0xFF101C45)),
+                  label: const Text(
+                    'View Map',
+                    style: TextStyle(
+                      color: Color(0xFF101C45),
+                      fontFamily: 'Poppins',
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  style: TextButton.styleFrom(
+                    backgroundColor: const Color(0xFFEEF1FA),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 15),
 
@@ -822,6 +869,34 @@ class _SafetyPageState extends State<SafetyPage> {
                           fontSize: 12,
                         ),
                       ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Icon(
+                            site.currentOccupancyIndividual >= site.maxCapacity && site.maxCapacity > 0
+                                ? Icons.warning_rounded
+                                : Icons.check_circle_rounded,
+                            size: 14,
+                            color: site.currentOccupancyIndividual >= site.maxCapacity && site.maxCapacity > 0
+                                ? Colors.redAccent
+                                : Colors.greenAccent,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            site.currentOccupancyIndividual >= site.maxCapacity && site.maxCapacity > 0
+                                ? "FULL"
+                                : "Available",
+                            style: TextStyle(
+                              color: site.currentOccupancyIndividual >= site.maxCapacity && site.maxCapacity > 0
+                                  ? Colors.redAccent
+                                  : Colors.greenAccent,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              fontFamily: 'Poppins',
+                            ),
+                          ),
+                        ],
+                      ),
                     ],
                   ),
                 ),
@@ -1127,60 +1202,91 @@ class _SafetyPageState extends State<SafetyPage> {
 
     final nameController = TextEditingController();
     final numberController = TextEditingController();
+    String? nameError;
+    String? numberError;
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text(
-          "Add Local Hotline",
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'You can save up to 3 personal hotlines.',
-              style: TextStyle(
-                fontSize: 11,
-                color: Colors.grey,
-                fontFamily: 'Poppins',
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: nameController,
-              maxLength: 20,
-              textCapitalization: TextCapitalization.words,
-              decoration: const InputDecoration(
-                labelText: "Name",
-                hintText: "e.g. Mom",
-              ),
-            ),
-            TextField(
-              controller: numberController,
-              maxLength: 11,
-              decoration: const InputDecoration(
-                labelText: "Number",
-                hintText: "0912...",
-              ),
-              keyboardType: TextInputType.phone,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Cancel"),
+      builder: (context) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text(
+            "Add Local Hotline",
+            style: TextStyle(fontWeight: FontWeight.bold),
           ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF101C45),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'You can save up to 3 personal hotlines.',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Colors.grey,
+                  fontFamily: 'Poppins',
+                ),
+              ),
+              const SizedBox(height: 12),
+              // Name field
+              TextField(
+                controller: nameController,
+                maxLength: 20,
+                textCapitalization: TextCapitalization.words,
+                onChanged: (_) {
+                  if (nameError != null) {
+                    setDialogState(() => nameError = null);
+                  }
+                },
+                decoration: InputDecoration(
+                  labelText: "Name",
+                  hintText: "e.g. Mom",
+                  errorText: nameError,
+                ),
+              ),
+              // Number field
+              TextField(
+                controller: numberController,
+                maxLength: 11,
+                onChanged: (_) {
+                  if (numberError != null) {
+                    setDialogState(() => numberError = null);
+                  }
+                },
+                decoration: InputDecoration(
+                  labelText: "Number",
+                  hintText: "0912...",
+                  errorText: numberError,
+                ),
+                keyboardType: TextInputType.phone,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Cancel"),
             ),
-            onPressed: () async {
-              if (nameController.text.isNotEmpty &&
-                  numberController.text.isNotEmpty) {
-                String rawName = nameController.text;
-                String capitalizedName = rawName
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF101C45),
+              ),
+              onPressed: () async {
+                // Validate
+                final nameVal = nameController.text.trim();
+                final numVal = numberController.text.trim();
+                String? newNameErr;
+                String? newNumErr;
+
+                if (nameVal.isEmpty) newNameErr = 'Please enter a name';
+                if (numVal.isEmpty) newNumErr = 'Please enter a number';
+
+                if (newNameErr != null || newNumErr != null) {
+                  setDialogState(() {
+                    nameError = newNameErr;
+                    numberError = newNumErr;
+                  });
+                  return;
+                }
+
+                String capitalizedName = nameVal
                     .split(' ')
                     .map(
                       (word) => word.isNotEmpty
@@ -1192,7 +1298,7 @@ class _SafetyPageState extends State<SafetyPage> {
                 try {
                   await _hotlineService.addLocalHotline(
                     capitalizedName,
-                    numberController.text,
+                    numVal,
                   );
                   _refreshList();
                   if (context.mounted) Navigator.pop(context);
@@ -1207,11 +1313,11 @@ class _SafetyPageState extends State<SafetyPage> {
                     );
                   }
                 }
-              }
-            },
-            child: const Text("Add", style: TextStyle(color: Colors.white)),
-          ),
-        ],
+              },
+              child: const Text("Add", style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
       ),
     );
   }

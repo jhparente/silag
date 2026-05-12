@@ -5,6 +5,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:silag/models/flood_report_model.dart';
 import 'api_config.dart';
+import 'api_client.dart';
 
 class FloodReportService {
   static final FloodReportService _instance = FloodReportService._internal();
@@ -58,9 +59,8 @@ class FloodReportService {
       }
 
       final uri = _buildUri('submit_flood_report');
-      final response = await http.post(
+      final response = await ApiClient().post(
         uri,
-        headers: headers,
         body: jsonEncode({
           'user_id': userId,
           'address': address,
@@ -71,6 +71,9 @@ class FloodReportService {
       );
 
       if (response.statusCode != 200) {
+        if (response.statusCode == 401) {
+          throw Exception("Session expired. Redirecting to login...");
+        }
         throw Exception('Failed to submit report. (${response.statusCode})');
       }
     } catch (e) {
@@ -88,15 +91,17 @@ class FloodReportService {
 
   // --- SHARED: Fetch all accepted reports from backend ---
   Future<List<FloodReportModel>> _fetchPublicReports() async {
-    final headers = await _authHeaders();
     final uri = _buildUri('flood_reports_public');
-    final response = await http.get(uri, headers: headers);
+    final response = await ApiClient().get(uri);
 
     if (response.statusCode == 200) {
       final Map<String, dynamic> body = jsonDecode(response.body);
       final List<dynamic> data = body['data'] ?? [];
       return data.map((json) => FloodReportModel.fromJson(json)).toList();
     } else {
+      if (response.statusCode == 401) {
+        throw Exception("Session expired. Redirecting to login...");
+      }
       throw Exception('Failed to load reports. (${response.statusCode})');
     }
   }
@@ -166,10 +171,6 @@ class FloodReportService {
 
       final uri = _buildUri('submit_flood_report');
       final request = http.MultipartRequest('POST', uri);
-      request.headers.addAll({
-        'Authorization': 'Bearer $token',
-        'Accept': 'application/json',
-      });
 
       request.fields['user_id'] = userId;
       request.fields['latitude'] = latitude.toString();
@@ -184,13 +185,16 @@ class FloodReportService {
         await http.MultipartFile.fromPath('image_file', imageFile.path),
       );
 
-      final streamedResponse = await request.send();
+      final streamedResponse = await ApiClient().sendMultipart(request);
       final response = await http.Response.fromStream(streamedResponse);
 
       debugPrint('Submit status: ${response.statusCode}');
       debugPrint('Submit body: ${response.body}');
 
       if (response.statusCode != 200 && response.statusCode != 201) {
+        if (response.statusCode == 401) {
+          throw Exception("Session expired. Redirecting to login...");
+        }
         throw Exception(
           'Failed to submit report. (${response.statusCode}): ${response.body}',
         );

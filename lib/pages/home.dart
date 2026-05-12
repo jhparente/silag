@@ -1,15 +1,16 @@
 // ignore_for_file: deprecated_member_use of withOpacity
 import 'dart:async';
 import 'package:flutter/material.dart';
-// import 'package:flutter_svg/flutter_svg.dart';
 import 'package:intl/intl.dart';
+import 'package:silag/models/notification_model.dart';
 import 'package:silag/pages/profile_page.dart';
+import 'package:silag/services/notification_service.dart';
 import 'package:silag/services/sensor_service.dart';
 import 'package:silag/services/weather_service.dart';
 import 'package:silag/models/weather_model.dart';
 import 'package:silag/models/sensor_model.dart';
 import 'package:silag/widgets/skeleton_loader.dart';
-import 'dart:math' as math; // Required for the drawing math
+import 'dart:math' as math;
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -21,9 +22,12 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   final _weatherService = WeatherService();
   final _sensorService = SensorService();
+  final _notifService = NotificationService();
 
   late Future<WeatherModel> _weatherFuture;
   late Future<List<SensorModel>> _sensorsFuture;
+  List<NotificationModel> _notifications = [];
+  int get _unreadCount => _notifications.where((n) => !n.isReadLocally).length;
 
   /// Auto-refresh interval — sensors reload every 30 seconds automatically.
   Timer? _refreshTimer;
@@ -34,6 +38,14 @@ class _HomePageState extends State<HomePage> {
     _weatherFuture = _weatherService.fetchWeather();
     _sensorsFuture = _sensorService.fetchSensors();
     _startAutoRefresh();
+    _loadNotifications();
+  }
+
+  Future<void> _loadNotifications() async {
+    try {
+      final list = await _notifService.fetchNotifications();
+      if (mounted) setState(() => _notifications = list);
+    } catch (_) {}
   }
 
   void _startAutoRefresh() {
@@ -265,9 +277,10 @@ class _HomePageState extends State<HomePage> {
                       label: 'Sensor ID',
                       value: sensor.id.isEmpty ? 'N/A' : sensor.id,
                     ),
-                    _buildSensorDetailTile(
-                      label: 'Sensor Type',
-                      value: 'Ultrasonic',
+                    _buildSensorDetailTileWithColor(
+                      label: 'Sensor Active',
+                      value: sensor.isActive ? 'Active' : 'Inactive',
+                      valueColor: sensor.isActive ? Colors.greenAccent : Colors.redAccent,
                     ),
                     _buildSensorDetailTile(
                       label: 'Status',
@@ -286,10 +299,10 @@ class _HomePageState extends State<HomePage> {
                       value: '${(sensor.criticalThresholdFt ?? 1.50).toStringAsFixed(2)} ft',
                     ),
                     _buildSensorDetailTile(
-                      label: 'Last Refreshed',
-                      value: DateFormat(
-                        'MMM d, y - h:mm a',
-                      ).format(DateTime.now()),
+                      label: 'Last Updated',
+                      value: sensor.lastReadingAt != null
+                          ? DateFormat('MMM d, y - h:mm a').format(sensor.lastReadingAt!.toLocal())
+                          : 'No data',
                     ),
                     const SizedBox(height: 14),
                     SizedBox(
@@ -352,6 +365,50 @@ class _HomePageState extends State<HomePage> {
               textAlign: TextAlign.right,
               style: const TextStyle(
                 color: Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                fontFamily: 'Poppins',
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSensorDetailTileWithColor({
+    required String label,
+    required String value,
+    required Color valueColor,
+  }) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF16224A),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            flex: 4,
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 12,
+                fontFamily: 'Poppins',
+              ),
+            ),
+          ),
+          Expanded(
+            flex: 5,
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                color: valueColor,
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
                 fontFamily: 'Poppins',
@@ -575,7 +632,7 @@ class _HomePageState extends State<HomePage> {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 25),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
       decoration: BoxDecoration(
         color: const Color(0xFF16224A), // Main Navy Background
         borderRadius: BorderRadius.circular(30),
@@ -594,7 +651,7 @@ class _HomePageState extends State<HomePage> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               // Local weather icon based on condition
-              _buildWeatherIcon(weather.iconCode, size: 130),
+              _buildWeatherIcon(weather.iconCode, size: 90),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -886,6 +943,185 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  // Notification Panel
+  void _openNotificationPanel() async {
+    // Mark all as read locally
+    final ids = _notifications.map((n) => n.id).toList();
+    await _notifService.markAllAsRead(ids);
+    setState(() {
+      for (final n in _notifications) {
+        n.isReadLocally = true;
+      }
+    });
+
+    if (!mounted) return;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.75,
+          minChildSize: 0.4,
+          maxChildSize: 0.92,
+          builder: (_, scrollCtrl) => Container(
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            child: Column(
+              children: [
+                // Handle bar
+                Padding(
+                  padding: const EdgeInsets.only(top: 12, bottom: 8),
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[300],
+                      borderRadius: BorderRadius.circular(100),
+                    ),
+                  ),
+                ),
+                // Header
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.notifications_rounded, color: Color(0xFF101C45), size: 22),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'Notifications',
+                        style: TextStyle(
+                          fontFamily: 'Poppins',
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF101C45),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1, color: Color(0xFFEEEEEE)),
+                // List
+                Expanded(
+                  child: _notifications.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.notifications_off_outlined, size: 48, color: Colors.grey[400]),
+                              const SizedBox(height: 12),
+                              Text(
+                                'No notifications yet',
+                                style: TextStyle(color: Colors.grey[500], fontFamily: 'Poppins', fontSize: 14),
+                              ),
+                            ],
+                          ),
+                        )
+                      : ListView.separated(
+                          controller: scrollCtrl,
+                          itemCount: _notifications.length,
+                          separatorBuilder: (_, __) => const Divider(height: 1, color: Color(0xFFF0F0F0), indent: 16, endIndent: 16),
+                          itemBuilder: (_, i) {
+                            final notif = _notifications[i];
+                            final isRead = notif.isReadLocally;
+                            final timeStr = _formatNotifTime(notif.createdAt);
+                            return Material(
+                              color: isRead ? Colors.white : const Color(0xFFF5F7FF),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Container(
+                                      width: 40,
+                                      height: 40,
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF101C45).withOpacity(0.08),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: const Icon(Icons.campaign_outlined, color: Color(0xFF101C45), size: 20),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
+                                            children: [
+                                              Expanded(
+                                                child: Text(
+                                                  notif.title,
+                                                  style: TextStyle(
+                                                    fontFamily: 'Poppins',
+                                                    fontSize: 13,
+                                                    fontWeight: isRead ? FontWeight.w500 : FontWeight.bold,
+                                                    color: const Color(0xFF101C45),
+                                                  ),
+                                                ),
+                                              ),
+                                              if (!isRead)
+                                                Container(
+                                                  width: 8,
+                                                  height: 8,
+                                                  decoration: const BoxDecoration(
+                                                    color: Color(0xFF101C45),
+                                                    shape: BoxShape.circle,
+                                                  ),
+                                                ),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 3),
+                                          Text(
+                                            notif.body,
+                                            style: TextStyle(
+                                              fontFamily: 'Poppins',
+                                              fontSize: 12,
+                                              color: Colors.grey[600],
+                                              height: 1.4,
+                                            ),
+                                            maxLines: 3,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                          const SizedBox(height: 5),
+                                          Text(
+                                            timeStr,
+                                            style: TextStyle(
+                                              fontFamily: 'Poppins',
+                                              fontSize: 11,
+                                              color: Colors.grey[400],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  String _formatNotifTime(DateTime dt) {
+    final local = dt.toLocal();
+    final now = DateTime.now();
+    final diff = now.difference(local);
+    if (diff.inMinutes < 1) return 'Just now';
+    if (diff.inHours < 1) return '${diff.inMinutes}m ago';
+    if (diff.inDays < 1) return '${diff.inHours}h ago';
+    if (diff.inDays < 7) return '${diff.inDays}d ago';
+    return DateFormat('MMM d').format(local);
+  }
+
   // App Bar Widget
   AppBar appBar(String formattedDate) {
     return AppBar(
@@ -917,6 +1153,46 @@ class _HomePageState extends State<HomePage> {
       actions: [
         Row(
           children: [
+            // --- Notification Bell ---
+            GestureDetector(
+              onTap: _openNotificationPanel,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Container(
+                    alignment: Alignment.center,
+                    height: 35,
+                    width: 35,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFCCCCCC).withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.notifications_outlined, color: Color(0xFF101C45), size: 20),
+                  ),
+                  if (_unreadCount > 0)
+                    Positioned(
+                      top: -4,
+                      right: -4,
+                      child: Container(
+                        width: 16,
+                        height: 16,
+                        decoration: const BoxDecoration(
+                          color: Colors.redAccent,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Center(
+                          child: Text(
+                            _unreadCount > 9 ? '9+' : '$_unreadCount',
+                            style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            // --- Profile Button ---
             GestureDetector(
               onTap: () {
                 Navigator.push(
@@ -933,11 +1209,7 @@ class _HomePageState extends State<HomePage> {
                   borderRadius: BorderRadius.circular(10),
                 ),
                 padding: const EdgeInsets.all(1),
-                child: const Icon(
-                  Icons.person,
-                  color: Color(0xFF101C45),
-                  size: 20,
-                ),
+                child: const Icon(Icons.person, color: Color(0xFF101C45), size: 20),
               ),
             ),
             const SizedBox(width: 15),

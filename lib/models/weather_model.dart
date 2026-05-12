@@ -13,16 +13,29 @@ class HourlyWeatherEntry {
   });
 
   factory HourlyWeatherEntry.fromJson(Map<String, dynamic> json) {
-    // "time" comes as "2026-05-02T14:00" (ISO, no timezone)
     final rawTime = json['time']?.toString() ?? '';
-    final time = DateTime.tryParse(rawTime) ?? DateTime.now();
+    DateTime parsedTime = DateTime.now();
+    if (rawTime.isNotEmpty) {
+      String formattedTime = rawTime.replaceFirst(' ', 'T');
+      if (formattedTime.length == 16) {
+        formattedTime += ":00";
+      }
+      parsedTime = DateTime.tryParse(formattedTime) ?? DateTime.now();
+    }
+    final time = parsedTime;
 
     final condition =
         json['condition'] is Map ? json['condition'] as Map<String, dynamic> : <String, dynamic>{};
     final iconCode = (condition['icon'] ?? '01d').toString();
 
     final tempC = (json['temp_c'] as num?)?.toDouble() ?? 0.0;
-    final rainChance = (json['chance_of_rain'] as num?)?.toInt() ?? 0;
+    
+    int rainChance = 0;
+    if (json['chance_of_rain'] != null) {
+      rainChance = (json['chance_of_rain'] as num).toInt();
+    } else if (json['pop'] != null) {
+      rainChance = ((json['pop'] as num).toDouble() * 100).round();
+    }
 
     return HourlyWeatherEntry(
       time: time,

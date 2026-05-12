@@ -208,6 +208,10 @@ class _SignupState extends State<Signup> {
                 _buildLabel("Username"),
                 TextField(
                   controller: _usernameController,
+                  maxLength: 20,
+                  inputFormatters: [
+                    LengthLimitingTextInputFormatter(20),
+                  ],
                   decoration: _inputDecoration(
                     hint: "e.g. JuanDelaCruz",
                     prefixIcon: Icons.person_outline,

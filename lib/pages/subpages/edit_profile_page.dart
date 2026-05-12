@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../models/profile_model.dart';
@@ -251,6 +252,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
                     "Username",
                     _usernameController,
                     Icons.person_outline,
+                    maxLength: 20,
                   ),
 
                   const SizedBox(height: 15),
@@ -406,10 +408,15 @@ class _EditProfilePageState extends State<EditProfilePage> {
   Widget _buildEditableField(
     String label,
     TextEditingController controller,
-    IconData icon,
-  ) {
+    IconData icon, {
+    int? maxLength,
+  }) {
     return TextField(
       controller: controller,
+      maxLength: maxLength,
+      inputFormatters: maxLength != null
+          ? [LengthLimitingTextInputFormatter(maxLength)]
+          : null,
       style: const TextStyle(
         color: Colors.black87,
         fontFamily: 'Poppins',

@@ -23,7 +23,24 @@ class ApiClient {
     };
   }
 
-  Future<bool> _handleBanCheck(http.Response response) async {
+  Future<bool> _handleUnauthorizedAndBan(http.Response response) async {
+    if (response.statusCode == 401) {
+      try {
+        final body = jsonDecode(response.body);
+        final detail = body['detail']?.toString() ?? '';
+        if (detail.toLowerCase().contains('expired') ||
+            detail.toLowerCase().contains('invalid') ||
+            detail.toLowerCase().contains('revoked')) {
+          await _forceLogout('Session expired. Please log in again.');
+          return true;
+        }
+      } catch (_) {}
+      
+      // Fallback: If it's a 401, force logout anyway
+      await _forceLogout('Session expired. Please log in again.');
+      return true;
+    }
+
     if (response.statusCode == 403) {
       try {
         final body = jsonDecode(response.body);
@@ -57,6 +74,10 @@ class ApiClient {
     );
   }
 
+  Future<bool> handleUnauthorizedResponse(http.Response response) async {
+    return await _handleUnauthorizedAndBan(response);
+  }
+
   Future<http.Response> get(
     Uri uri, {
     Map<String, String>? extraHeaders,
@@ -64,7 +85,7 @@ class ApiClient {
     final headers = await _authHeaders();
     if (extraHeaders != null) headers.addAll(extraHeaders);
     final response = await http.get(uri, headers: headers);
-    await _handleBanCheck(response);
+    await _handleUnauthorizedAndBan(response);
     return response;
   }
 
@@ -76,7 +97,7 @@ class ApiClient {
     final headers = await _authHeaders();
     if (extraHeaders != null) headers.addAll(extraHeaders);
     final response = await http.post(uri, headers: headers, body: body);
-    await _handleBanCheck(response);
+    await _handleUnauthorizedAndBan(response);
     return response;
   }
 
@@ -88,7 +109,7 @@ class ApiClient {
     final headers = await _authHeaders();
     if (extraHeaders != null) headers.addAll(extraHeaders);
     final response = await http.put(uri, headers: headers, body: body);
-    await _handleBanCheck(response);
+    await _handleUnauthorizedAndBan(response);
     return response;
   }
 
@@ -103,13 +124,13 @@ class ApiClient {
 
     final streamed = await request.send();
     final response = await http.Response.fromStream(streamed);
-    final wasBanned = await _handleBanCheck(response);
+    final wasHandled = await _handleUnauthorizedAndBan(response);
 
     return http.StreamedResponse(
       Stream.value(response.bodyBytes),
       response.statusCode,
       headers: response.headers,
-      reasonPhrase: wasBanned ? 'ACCOUNT_BANNED' : response.reasonPhrase,
+      reasonPhrase: wasHandled ? 'UNAUTHORIZED_OR_BANNED' : response.reasonPhrase,
     );
   }
 }

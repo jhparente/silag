@@ -14,6 +14,16 @@ class SensorModel {
   final double? normalThresholdFt;
   /// Per-sensor critical threshold in feet (null = use global threshold)
   final double? criticalThresholdFt;
+  /// GPS coordinates for map display
+  final double? latitude;
+  final double? longitude;
+  /// Timestamp of the last sensor reading (recorded_at from sensor_logs)
+  final DateTime? lastReadingAt;
+  /// True if last reading was within 10 minutes
+  bool get isActive {
+    if (lastReadingAt == null) return false;
+    return DateTime.now().toUtc().difference(lastReadingAt!.toUtc()).inMinutes < 10;
+  }
 
   // Private constructor to enforce immutability
   SensorModel._internal({
@@ -26,6 +36,9 @@ class SensorModel {
     required this.location,
     this.normalThresholdFt,
     this.criticalThresholdFt,
+    this.latitude,
+    this.longitude,
+    this.lastReadingAt,
   });
 
   /// Factory constructor — all sensors are treated as ultrasonic.
@@ -37,6 +50,9 @@ class SensorModel {
     required String location,
     double? normalThresholdFt,
     double? criticalThresholdFt,
+    double? latitude,
+    double? longitude,
+    DateTime? lastReadingAt,
   }) {
     return SensorModel._internal(
       id: id,
@@ -48,6 +64,9 @@ class SensorModel {
       location: location,
       normalThresholdFt: normalThresholdFt,
       criticalThresholdFt: criticalThresholdFt,
+      latitude: latitude,
+      longitude: longitude,
+      lastReadingAt: lastReadingAt,
     );
   }
 
@@ -67,12 +86,17 @@ class SensorModel {
       json['current_water_level'] ?? json['water_level'] ?? json['waterLevel'],
     );
 
-    final normalThresholdFt = _toDoubleOrNull(
-      json['normal_threshold_ft'],
-    );
-    final criticalThresholdFt = _toDoubleOrNull(
-      json['critical_threshold_ft'],
-    );
+    final normalThresholdFt = _toDoubleOrNull(json['normal_threshold_ft']);
+    final criticalThresholdFt = _toDoubleOrNull(json['critical_threshold_ft']);
+    final latitude = _toDoubleOrNull(json['latitude']);
+    final longitude = _toDoubleOrNull(json['longitude']);
+
+    // Parse last reading time — prefer recorded_at (from merged log), fall back to last_heartbeat
+    DateTime? lastReadingAt;
+    final rawTs = (json['recorded_at'] ?? json['last_heartbeat'] ?? '').toString();
+    if (rawTs.isNotEmpty) {
+      lastReadingAt = DateTime.tryParse(rawTs.replaceFirst(' ', 'T'));
+    }
 
     return SensorModel.ultrasonic(
       id: id,
@@ -82,6 +106,9 @@ class SensorModel {
       location: location,
       normalThresholdFt: normalThresholdFt,
       criticalThresholdFt: criticalThresholdFt,
+      latitude: latitude,
+      longitude: longitude,
+      lastReadingAt: lastReadingAt,
     );
   }
 
@@ -113,11 +140,6 @@ class SensorModel {
   }
 
   /// Derive a display status from water level in feet.
-  /// Thresholds match the backend defaults:
-  ///   Safe      :  0.00 – 0.09 ft
-  ///   Low Flood :  0.10 – 0.50 ft
-  ///   Warning   :  0.51 – 1.49 ft   (≥ rising_ft)
-  ///   Critical  :  1.50 ft and above (≥ critical_ft)
   static String _statusFromWaterLevelFt(double waterLevelFt) {
     if (waterLevelFt >= 1.50) return 'Critical';
     if (waterLevelFt >= 0.51) return 'Warning';

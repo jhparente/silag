@@ -7,6 +7,8 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart' hide Path;
+import 'package:silag/models/evacuation_model.dart';
+import 'package:silag/models/sensor_model.dart';
 
 class RouteStep {
   final String instruction;
@@ -28,12 +30,16 @@ class EvacuationMapPage extends StatefulWidget {
   final double destLatitude;
   final double destLongitude;
   final String destName;
+  final List<EvacuationModel> otherSites;
+  final List<SensorModel> sensors;
 
   const EvacuationMapPage({
     super.key,
     required this.destLatitude,
     required this.destLongitude,
     required this.destName,
+    this.otherSites = const [],
+    this.sensors = const [],
   });
 
   @override
@@ -333,6 +339,17 @@ class _EvacuationMapPageState extends State<EvacuationMapPage>
 
   double _deg2rad(double deg) => deg * (math.pi / 180);
 
+  static Color _sensorColor(double wl) {
+    if (wl >= 7.0) return const Color(0xFF121212);
+    if (wl >= 6.0) return const Color(0xFF311B92);
+    if (wl >= 5.0) return const Color(0xFF9C27B0);
+    if (wl >= 4.0) return const Color(0xFFB71C1C);
+    if (wl >= 3.0) return const Color(0xFFF44336);
+    if (wl >= 2.0) return const Color(0xFFFF9800);
+    if (wl >= 1.0) return const Color(0xFFFFC107);
+    return Colors.greenAccent;
+  }
+
   String _formatDistance(double km) {
     if (km < 1) return '${(km * 1000).round()} m';
     return '${km.toStringAsFixed(1)} km';
@@ -441,6 +458,7 @@ class _EvacuationMapPageState extends State<EvacuationMapPage>
                             ),
                           MarkerLayer(
                             markers: [
+                              // --- Destination (navigation target) ---
                               Marker(
                                 point: dest,
                                 width: 52,
@@ -465,6 +483,60 @@ class _EvacuationMapPageState extends State<EvacuationMapPage>
                                   ],
                                 ),
                               ),
+                              // --- Other evacuation sites ---
+                              ...widget.otherSites
+                                  .where((s) => s.latitude != 0.0 && s.longitude != 0.0)
+                                  .map((s) => Marker(
+                                        point: LatLng(s.latitude, s.longitude),
+                                        width: 44,
+                                        height: 54,
+                                        child: Tooltip(
+                                          message: s.name,
+                                          child: Column(
+                                            children: [
+                                              Container(
+                                                width: 30,
+                                                height: 30,
+                                                decoration: BoxDecoration(
+                                                  color: const Color(0xFF00C97A),
+                                                  shape: BoxShape.circle,
+                                                  border: Border.all(color: Colors.white, width: 1.5),
+                                                  boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
+                                                ),
+                                                child: const Icon(Icons.emergency_share, color: Colors.white, size: 14),
+                                              ),
+                                              CustomPaint(
+                                                size: const Size(10, 8),
+                                                painter: _TrianglePainter(const Color(0xFF00C97A)),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      )),
+                              // --- Sensor markers (color-coded by flood level) ---
+                              ...widget.sensors
+                                  .where((s) => s.latitude != null && s.longitude != null)
+                                  .map((s) {
+                                    final col = _sensorColor(s.waterLevel);
+                                    return Marker(
+                                      point: LatLng(s.latitude!, s.longitude!),
+                                      width: 34,
+                                      height: 34,
+                                      child: Tooltip(
+                                        message: '${s.name}\n${s.waterLevel.toStringAsFixed(2)} ft',
+                                        child: Container(
+                                          decoration: BoxDecoration(
+                                            color: col.withOpacity(0.85),
+                                            shape: BoxShape.circle,
+                                            border: Border.all(color: Colors.white, width: 1.5),
+                                            boxShadow: [BoxShadow(color: col.withOpacity(0.5), blurRadius: 6)],
+                                          ),
+                                          child: const Icon(Icons.sensors, color: Colors.white, size: 14),
+                                        ),
+                                      ),
+                                    );
+                                  }),
+                              // --- User location ---
                               if (_userLocation != null)
                                 Marker(
                                   point: _userLocation!,
@@ -585,7 +657,7 @@ class _EvacuationMapPageState extends State<EvacuationMapPage>
                       left: 0,
                       right: 0,
                       child: Container(
-                        padding: const EdgeInsets.fromLTRB(24, 20, 24, 30),
+                        padding: const EdgeInsets.fromLTRB(24, 16, 24, 28),
                         decoration: const BoxDecoration(
                           color: Color(0xFF101C45),
                           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -599,12 +671,12 @@ class _EvacuationMapPageState extends State<EvacuationMapPage>
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Text(
-                                  _durationText ?? '-- min',
-                                  style: const TextStyle(color: Color(0xFF00C97A), fontSize: 24, fontWeight: FontWeight.bold, fontFamily: 'Poppins'),
+                                  _distanceText ?? '-- km',
+                                  style: const TextStyle(color: Color(0xFF00C97A), fontSize: 22, fontWeight: FontWeight.bold, fontFamily: 'Poppins'),
                                 ),
-                                const SizedBox(height: 4),
+                                const SizedBox(height: 2),
                                 Text(
-                                  '${_distanceText ?? '-- km'} • To ${widget.destName}',
+                                  'To ${widget.destName}',
                                   style: const TextStyle(color: Colors.white70, fontSize: 13, fontFamily: 'Poppins'),
                                 ),
                               ],
