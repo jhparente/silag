@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:silag/main_screen.dart'; // Import your MainScreen here
 import '../services/auth_service.dart';
 import 'signup.dart';
+import 'forgot_password.dart';
 
 class Login extends StatefulWidget {
   final String? initialErrorMessage;
@@ -218,7 +219,14 @@ class _LoginState extends State<Login> {
                 Align(
                   alignment: Alignment.centerRight,
                   child: TextButton(
-                    onPressed: () {},
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const ForgotPassword(),
+                        ),
+                      );
+                    },
                     child: const Text(
                       "Forgot Password?",
                       style: TextStyle(

@@ -167,6 +167,86 @@ class AuthService {
     }
   }
 
+  Future<void> requestPasswordResetOtp({
+    required String mobileNumber,
+    required String deviceToken,
+  }) async {
+    try {
+      final response = await http.post(
+        _buildUri('forgot_password/request'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: jsonEncode({
+          'mobile_number': mobileNumber,
+          'device_token': deviceToken,
+        }),
+      );
+
+      final Map<String, dynamic> responseBody = jsonDecode(response.body);
+      if (response.statusCode != 200 || responseBody['status'] != 'success') {
+        final message =
+            (responseBody['message'] ??
+                    responseBody['detail'] ??
+                    'Request failed')
+                .toString();
+        throw Exception(message);
+      }
+    } catch (e) {
+      final errStr = e.toString();
+      if (errStr.contains('ClientException') ||
+          errStr.contains('SocketException') ||
+          errStr.contains('Failed to fetch') ||
+          errStr.contains('Connection refused') ||
+          errStr.contains('Network is unreachable')) {
+        throw Exception('Network error occurred. Please try again later.');
+      }
+      throw Exception(errStr.replaceAll('Exception: ', ''));
+    }
+  }
+
+  Future<void> resetPasswordWithOtp({
+    required String mobileNumber,
+    required String otpCode,
+    required String newPassword,
+  }) async {
+    try {
+      final response = await http.post(
+        _buildUri('forgot_password/verify'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: jsonEncode({
+          'mobile_number': mobileNumber,
+          'otp_code': otpCode,
+          'new_password': newPassword,
+        }),
+      );
+
+      final Map<String, dynamic> responseBody = jsonDecode(response.body);
+      if (response.statusCode != 200 || responseBody['status'] != 'success') {
+        final message =
+            (responseBody['message'] ??
+                    responseBody['detail'] ??
+                    'Reset failed')
+                .toString();
+        throw Exception(message);
+      }
+    } catch (e) {
+      final errStr = e.toString();
+      if (errStr.contains('ClientException') ||
+          errStr.contains('SocketException') ||
+          errStr.contains('Failed to fetch') ||
+          errStr.contains('Connection refused') ||
+          errStr.contains('Network is unreachable')) {
+        throw Exception('Network error occurred. Please try again later.');
+      }
+      throw Exception(errStr.replaceAll('Exception: ', ''));
+    }
+  }
+
   Future<String?> getToken() async {
     final token = await _storage.read(key: 'jwt_token');
     if (token == null) return null;

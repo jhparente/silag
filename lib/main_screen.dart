@@ -3,6 +3,8 @@ import 'pages/home.dart';
 import 'pages/report.dart';
 import 'pages/safety.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'services/api_client.dart';
+import 'services/auth_service.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -35,6 +37,17 @@ class _MainScreenState extends State<MainScreen> {
       final title = message.notification?.title ?? message.data['title'] ?? 'Notification';
       final body = message.notification?.body ?? message.data['body'] ?? '';
       final type = message.data['type'];
+
+      if (type == 'account_banned') {
+        AuthService().logout().then((_) {
+          ApiClient.navigatorKey.currentState?.pushNamedAndRemoveUntil(
+            '/login',
+            (_) => false,
+            arguments: 'Account is banned. Contact the admin.',
+          );
+        });
+        return;
+      }
 
       if (title.isNotEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(

@@ -7,6 +7,7 @@ import 'services/auth_service.dart';
 import 'services/api_client.dart';
 import 'services/ban_check_service.dart';
 import 'services/push_token_service.dart';
+import 'services/local_notification_service.dart';
 import 'services/connectivity_service.dart';
 import 'widgets/connectivity_wrapper.dart';
 
@@ -14,6 +15,9 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  await LocalNotificationService().initialize();
+  await LocalNotificationService().requestPermissions();
 
   await PushTokenService().initialize();
 

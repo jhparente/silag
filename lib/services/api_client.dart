@@ -28,6 +28,12 @@ class ApiClient {
       try {
         final body = jsonDecode(response.body);
         final detail = body['detail']?.toString() ?? '';
+        
+        if (detail.toLowerCase().contains('banned')) {
+          await _forceLogout('Account is banned. Contact the admin.');
+          return true;
+        }
+        
         if (detail.toLowerCase().contains('expired') ||
             detail.toLowerCase().contains('invalid') ||
             detail.toLowerCase().contains('revoked')) {
