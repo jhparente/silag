@@ -33,6 +33,17 @@ class _AllFloodReportsPageState extends State<AllFloodReportsPage> {
     }
   }
 
+  String _truncateDescription(String text, {int maxLength = 100}) {
+    final trimmed = text.trim();
+    if (trimmed.length <= maxLength) {
+      return trimmed;
+    }
+    if (maxLength <= 3) {
+      return trimmed.substring(0, maxLength);
+    }
+    return '${trimmed.substring(0, maxLength - 3).trimRight()}...';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -92,6 +103,7 @@ class _AllFloodReportsPageState extends State<AllFloodReportsPage> {
 
   // --- LIST ITEM WIDGET ---
   Widget _buildReportListItem(FloodReportModel report) {
+    final description = _truncateDescription(report.safeDescription);
     return GestureDetector(
       // Reusing the global function we created in the widgets folder!
       onTap: () => showReportDetails(context, report),
@@ -168,6 +180,19 @@ class _AllFloodReportsPageState extends State<AllFloodReportsPage> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
+                    if (description.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        description,
+                        style: const TextStyle(
+                          color: Colors.black54,
+                          fontSize: 11,
+                          fontFamily: 'Poppins',
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
                     const SizedBox(height: 8),
                     Row(
                       children: [

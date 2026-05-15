@@ -137,7 +137,13 @@ class FloodReportService {
   // --- FETCH ALL VALID REPORTS (called from AllFloodReportsPage) ---
   Future<List<FloodReportModel>> fetchAllValidReports() async {
     try {
-      return await _fetchPublicReports();
+      final reports = await _fetchPublicReports();
+      reports.sort(
+        (a, b) => (b.acceptedAt ?? b.reportedAt).compareTo(
+          a.acceptedAt ?? a.reportedAt,
+        ),
+      );
+      return reports;
     } catch (e) {
       final errStr = e.toString();
       if (errStr.contains('ClientException') ||
