@@ -44,14 +44,16 @@ class SensorService {
         sensorsById[id] = row;
       }
 
+      if (sensorsById.isEmpty) return [];
+
       final latestLogBySensorId = _latestLogBySensorId(logRows);
 
-      if (latestLogBySensorId.isEmpty) return [];
-
-      final mergedRows = latestLogBySensorId.entries.map((entry) {
+      // Iterate over ALL sensors (not just those with logs) so that newly
+      // registered sensors with no log history are still displayed.
+      final mergedRows = sensorsById.entries.map((entry) {
         final sensorId = entry.key;
-        final logRow = entry.value;
-        final sensorRow = sensorsById[sensorId] ?? const <String, dynamic>{};
+        final sensorRow = entry.value;
+        final logRow = latestLogBySensorId[sensorId] ?? const <String, dynamic>{};
 
         return <String, dynamic>{
           ...sensorRow,

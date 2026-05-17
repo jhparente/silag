@@ -1,10 +1,10 @@
 class ApiConfig {
   ApiConfig._();
 
-  // Override with: --dart-define=API_HOST=http://10.0.2.2:8000
+  // Override with: --dart-define=API_HOST=https://silag-backend-production.up.railway.app
   static const String host = String.fromEnvironment(
     'API_HOST',
-    defaultValue: 'http://127.0.0.1:8000',
+    defaultValue: 'https://silag-backend-production.up.railway.app',
   );
 
   // Override with: --dart-define=API_DEFAULT_VERSION=v2

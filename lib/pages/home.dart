@@ -652,29 +652,34 @@ class _HomePageState extends State<HomePage> {
             children: [
               // Local weather icon based on condition
               _buildWeatherIcon(weather.iconCode, size: 90),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '${weather.temp.round()}\u00b0C',
-                    style: const TextStyle(
-                      fontFamily: 'Poppins',
-                      fontSize: 52,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                      height: 1.0,
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${weather.temp.round()}\u00b0C',
+                      style: const TextStyle(
+                        fontFamily: 'Poppins',
+                        fontSize: 52,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                        height: 1.0,
+                      ),
                     ),
-                  ),
-                  Text(
-                    weather.description,
-                    style: const TextStyle(
-                      fontFamily: 'Poppins',
-                      fontSize: 18,
-                      color: Colors.white,
-                      fontWeight: FontWeight.w500,
+                    Text(
+                      weather.description,
+                      softWrap: true,
+                      style: const TextStyle(
+                        fontFamily: 'Poppins',
+                        fontSize: 14,
+                        color: Colors.white,
+                        fontWeight: FontWeight.w500,
+                        height: 1.3,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ],
           ),
