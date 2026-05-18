@@ -77,12 +77,15 @@ class ReportDetailsDialog extends StatelessWidget {
                 ),
                 const SizedBox(height: 15),
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Icon(Icons.person, size: 16, color: Colors.grey),
                     const SizedBox(width: 5),
-                    Text(
-                      "Uploaded by: ${report.uploaderName}",
-                      style: const TextStyle(fontSize: 14, color: Colors.grey),
+                    Expanded(
+                      child: Text(
+                        "Uploaded by: ${report.uploaderName}",
+                        style: const TextStyle(fontSize: 14, color: Colors.grey),
+                      ),
                     ),
                   ],
                 ),

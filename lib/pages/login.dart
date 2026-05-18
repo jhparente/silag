@@ -133,11 +133,10 @@ class _LoginState extends State<Login> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 // --- LOGO OR ICON ---
-                const Icon(
-                  Icons
-                      .shield_moon, // Just a placeholder icon representing safety
-                  size: 80,
-                  color: Color(0xFF101C45),
+                Image.asset(
+                  'icons/690077655_1761743564788727_1218448248378351958_n.png',
+                  height: 90,
+                  width: 90,
                 ),
                 const SizedBox(height: 20),
 

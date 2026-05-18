@@ -8,6 +8,8 @@ class EvacuationModel {
   final int maxCapacity;
   final int currentOccupancyFamily;
   final int currentOccupancyIndividual;
+  final bool isActive;
+  final bool isFull;
 
   EvacuationModel({
     required this.id,
@@ -19,6 +21,8 @@ class EvacuationModel {
     required this.maxCapacity,
     required this.currentOccupancyFamily,
     required this.currentOccupancyIndividual,
+    this.isActive = true,
+    this.isFull = false,
   });
 
   factory EvacuationModel.fromJson(Map<String, dynamic> json) {
@@ -35,6 +39,8 @@ class EvacuationModel {
       maxCapacity: (json['max_capacity'] as num?)?.toInt() ?? 0,
       currentOccupancyFamily: (json['current_occupancy_family'] as num?)?.toInt() ?? 0,
       currentOccupancyIndividual: (json['current_occupancy_individual'] as num?)?.toInt() ?? 0,
+      isActive: json['is_active'] as bool? ?? true,
+      isFull: json['is_full'] as bool? ?? false,
     );
   }
 }

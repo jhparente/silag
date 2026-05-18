@@ -361,6 +361,7 @@ class _CreateReportPageState extends State<CreateReportPage> {
                   TextField(
                     controller: _descriptionController,
                     maxLines: 3,
+                    maxLength: 120,
                     decoration: _inputDecoration(
                       "Add details about the situation...",
                     ),

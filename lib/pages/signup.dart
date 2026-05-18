@@ -181,6 +181,14 @@ class _SignupState extends State<Signup> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                // --- LOGO ---
+                Image.asset(
+                  'icons/690077655_1761743564788727_1218448248378351958_n.png',
+                  height: 75,
+                  width: 75,
+                ),
+                const SizedBox(height: 16),
+
                 // --- HEADER TEXT ---
                 const Text(
                   "Create Account",

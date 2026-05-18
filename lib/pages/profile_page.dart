@@ -322,16 +322,8 @@ class _ProfilePageState extends State<ProfilePage> {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: 4),
-                Row(
-                  children: const [
-                    Text(
-                      "Verified ",
-                      style: TextStyle(color: Colors.white70, fontSize: 13),
-                    ),
-                    Icon(Icons.verified, color: Colors.blueAccent, size: 16),
-                  ],
-                ),
+
+
               ],
             ),
           ),

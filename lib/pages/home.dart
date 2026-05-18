@@ -505,6 +505,27 @@ class _HomePageState extends State<HomePage> {
                           ),
                         ),
                         const SizedBox(width: 6),
+                        // ── Active / Inactive status dot ──
+                        Container(
+                          width: 9,
+                          height: 9,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: sensor.isActive
+                                ? const Color(0xFF00E676)
+                                : Colors.redAccent,
+                            boxShadow: [
+                              BoxShadow(
+                                color: sensor.isActive
+                                    ? const Color(0xFF00E676).withOpacity(0.7)
+                                    : Colors.redAccent.withOpacity(0.5),
+                                blurRadius: 6,
+                                spreadRadius: 1,
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 6),
                         Icon(
                           Icons.open_in_new_rounded,
                           size: 14,
@@ -648,25 +669,36 @@ class _HomePageState extends State<HomePage> {
         children: [
           // A. TOP: Icon & Text
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               // Local weather icon based on condition
-              _buildWeatherIcon(weather.iconCode, size: 90),
+              Expanded(
+                child: Center(
+                  child: _buildWeatherIcon(weather.iconCode, size: 100),
+                ),
+              ),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text(
-                      '${weather.temp.round()}\u00b0C',
-                      style: const TextStyle(
-                        fontFamily: 'Poppins',
-                        fontSize: 52,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                        height: 1.0,
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        '${weather.temp.round()}\u00b0C',
+                        style: const TextStyle(
+                          fontFamily: 'Poppins',
+                          fontSize: 56,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                          height: 1.0,
+                        ),
                       ),
                     ),
+                    const SizedBox(height: 4),
                     Text(
                       weather.description,
                       softWrap: true,

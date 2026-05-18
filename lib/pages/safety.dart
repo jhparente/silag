@@ -867,27 +867,28 @@ class _SafetyPageState extends State<SafetyPage> {
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 12,
+                          fontFamily: 'Poppins',
                         ),
                       ),
                       const SizedBox(height: 4),
                       Row(
                         children: [
                           Icon(
-                            site.currentOccupancyIndividual >= site.maxCapacity && site.maxCapacity > 0
+                            site.isFull
                                 ? Icons.warning_rounded
                                 : Icons.check_circle_rounded,
                             size: 14,
-                            color: site.currentOccupancyIndividual >= site.maxCapacity && site.maxCapacity > 0
+                            color: site.isFull
                                 ? Colors.redAccent
                                 : Colors.greenAccent,
                           ),
                           const SizedBox(width: 4),
                           Text(
-                            site.currentOccupancyIndividual >= site.maxCapacity && site.maxCapacity > 0
+                            site.isFull
                                 ? "FULL"
                                 : "Available",
                             style: TextStyle(
-                              color: site.currentOccupancyIndividual >= site.maxCapacity && site.maxCapacity > 0
+                              color: site.isFull
                                   ? Colors.redAccent
                                   : Colors.greenAccent,
                               fontSize: 12,
