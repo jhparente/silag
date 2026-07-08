@@ -996,155 +996,11 @@ class _HomePageState extends State<HomePage> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) {
-        return DraggableScrollableSheet(
-          initialChildSize: 0.75,
-          minChildSize: 0.4,
-          maxChildSize: 0.92,
-          builder: (_, scrollCtrl) => Container(
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-            ),
-            child: Column(
-              children: [
-                // Handle bar
-                Padding(
-                  padding: const EdgeInsets.only(top: 12, bottom: 8),
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Colors.grey[300],
-                      borderRadius: BorderRadius.circular(100),
-                    ),
-                  ),
-                ),
-                // Header
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.notifications_rounded, color: Color(0xFF101C45), size: 22),
-                      const SizedBox(width: 8),
-                      const Text(
-                        'Notifications',
-                        style: TextStyle(
-                          fontFamily: 'Poppins',
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF101C45),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const Divider(height: 1, color: Color(0xFFEEEEEE)),
-                // List
-                Expanded(
-                  child: _notifications.isEmpty
-                      ? Center(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.notifications_off_outlined, size: 48, color: Colors.grey[400]),
-                              const SizedBox(height: 12),
-                              Text(
-                                'No notifications yet',
-                                style: TextStyle(color: Colors.grey[500], fontFamily: 'Poppins', fontSize: 14),
-                              ),
-                            ],
-                          ),
-                        )
-                      : ListView.separated(
-                          controller: scrollCtrl,
-                          itemCount: _notifications.length,
-                          separatorBuilder: (_, __) => const Divider(height: 1, color: Color(0xFFF0F0F0), indent: 16, endIndent: 16),
-                          itemBuilder: (_, i) {
-                            final notif = _notifications[i];
-                            final isRead = notif.isReadLocally;
-                            final timeStr = _formatNotifTime(notif.createdAt);
-                            return Material(
-                              color: isRead ? Colors.white : const Color(0xFFF5F7FF),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                                child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Container(
-                                      width: 40,
-                                      height: 40,
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFF101C45).withOpacity(0.08),
-                                        shape: BoxShape.circle,
-                                      ),
-                                      child: const Icon(Icons.campaign_outlined, color: Color(0xFF101C45), size: 20),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Row(
-                                            children: [
-                                              Expanded(
-                                                child: Text(
-                                                  notif.title,
-                                                  style: TextStyle(
-                                                    fontFamily: 'Poppins',
-                                                    fontSize: 13,
-                                                    fontWeight: isRead ? FontWeight.w500 : FontWeight.bold,
-                                                    color: const Color(0xFF101C45),
-                                                  ),
-                                                ),
-                                              ),
-                                              if (!isRead)
-                                                Container(
-                                                  width: 8,
-                                                  height: 8,
-                                                  decoration: const BoxDecoration(
-                                                    color: Color(0xFF101C45),
-                                                    shape: BoxShape.circle,
-                                                  ),
-                                                ),
-                                            ],
-                                          ),
-                                          const SizedBox(height: 3),
-                                          Text(
-                                            notif.body,
-                                            style: TextStyle(
-                                              fontFamily: 'Poppins',
-                                              fontSize: 12,
-                                              color: Colors.grey[600],
-                                              height: 1.4,
-                                            ),
-                                            maxLines: 3,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                          const SizedBox(height: 5),
-                                          Text(
-                                            timeStr,
-                                            style: TextStyle(
-                                              fontFamily: 'Poppins',
-                                              fontSize: 11,
-                                              color: Colors.grey[400],
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
+      builder: (ctx) => _NotificationPanel(
+        notifications: _notifications,
+        pageSize: 6,
+        formatTime: _formatNotifTime,
+      ),
     );
   }
 
@@ -1354,3 +1210,323 @@ class _HourlySlot {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Paginated Notification Bottom-Sheet Panel
+// ---------------------------------------------------------------------------
+
+class _NotificationPanel extends StatefulWidget {
+  final List<NotificationModel> notifications;
+  final int pageSize;
+  final String Function(DateTime) formatTime;
+
+  const _NotificationPanel({
+    required this.notifications,
+    required this.pageSize,
+    required this.formatTime,
+  });
+
+  @override
+  State<_NotificationPanel> createState() => _NotificationPanelState();
+}
+
+class _NotificationPanelState extends State<_NotificationPanel> {
+  late int _visibleCount;
+  bool _loadingMore = false;
+  late final ScrollController _scrollCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _visibleCount = widget.pageSize.clamp(0, widget.notifications.length);
+    _scrollCtrl = ScrollController();
+    _scrollCtrl.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _scrollCtrl.removeListener(_onScroll);
+    _scrollCtrl.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    // Trigger load-more when 80 px from the bottom
+    if (_scrollCtrl.position.pixels >=
+            _scrollCtrl.position.maxScrollExtent - 80 &&
+        !_loadingMore &&
+        _visibleCount < widget.notifications.length) {
+      _loadMore();
+    }
+  }
+
+  Future<void> _loadMore() async {
+    setState(() => _loadingMore = true);
+    // Small delay for a smooth feel — no network call needed
+    await Future.delayed(const Duration(milliseconds: 400));
+    if (!mounted) return;
+    setState(() {
+      _visibleCount = (_visibleCount + widget.pageSize)
+          .clamp(0, widget.notifications.length);
+      _loadingMore = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final allDone = _visibleCount >= widget.notifications.length;
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.75,
+      minChildSize: 0.4,
+      maxChildSize: 0.92,
+      builder: (_, sheetCtrl) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          children: [
+            // Handle bar
+            Padding(
+              padding: const EdgeInsets.only(top: 12, bottom: 8),
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(100),
+                ),
+              ),
+            ),
+            // Header
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.notifications_rounded,
+                    color: Color(0xFF101C45),
+                    size: 22,
+                  ),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'Notifications',
+                    style: TextStyle(
+                      fontFamily: 'Poppins',
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF101C45),
+                    ),
+                  ),
+                  const Spacer(),
+                  if (widget.notifications.isNotEmpty)
+                    Text(
+                      '${_visibleCount} of ${widget.notifications.length}',
+                      style: TextStyle(
+                        fontFamily: 'Poppins',
+                        fontSize: 12,
+                        color: Colors.grey[400],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const Divider(height: 1, color: Color(0xFFEEEEEE)),
+            // List
+            Expanded(
+              child: widget.notifications.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.notifications_off_outlined,
+                            size: 48,
+                            color: Colors.grey[400],
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            'No notifications yet',
+                            style: TextStyle(
+                              color: Colors.grey[500],
+                              fontFamily: 'Poppins',
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : ListView.separated(
+                      // Use the DraggableScrollableSheet's controller so dragging
+                      // the sheet up/down still works, and also attach our own
+                      // listener for load-more detection.
+                      controller: _scrollCtrl,
+                      // +1 for the footer row (loader / all-done message)
+                      itemCount: _visibleCount + 1,
+                      separatorBuilder: (_, i) => i < _visibleCount - 1
+                          ? const Divider(
+                              height: 1,
+                              color: Color(0xFFF0F0F0),
+                              indent: 16,
+                              endIndent: 16,
+                            )
+                          : const SizedBox.shrink(),
+                      itemBuilder: (_, i) {
+                        // Footer
+                        if (i == _visibleCount) {
+                          if (_loadingMore) {
+                            return const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 20),
+                              child: Center(
+                                child: SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.5,
+                                    color: Color(0xFF101C45),
+                                  ),
+                                ),
+                              ),
+                            );
+                          }
+                          if (allDone) {
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 20),
+                              child: Center(
+                                child: Text(
+                                  "You're all caught up 🎉",
+                                  style: TextStyle(
+                                    fontFamily: 'Poppins',
+                                    fontSize: 12,
+                                    color: Colors.grey[400],
+                                  ),
+                                ),
+                              ),
+                            );
+                          }
+                          // Show a subtle "scroll for more" hint
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            child: Center(
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.keyboard_arrow_down_rounded,
+                                    size: 18,
+                                    color: Colors.grey[400],
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    'Scroll to load more',
+                                    style: TextStyle(
+                                      fontFamily: 'Poppins',
+                                      fontSize: 12,
+                                      color: Colors.grey[400],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }
+
+                        // Regular notification item
+                        final notif = widget.notifications[i];
+                        final isRead = notif.isReadLocally;
+                        final timeStr = widget.formatTime(notif.createdAt);
+                        return Material(
+                          color: isRead
+                              ? Colors.white
+                              : const Color(0xFFF5F7FF),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 14,
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Container(
+                                  width: 40,
+                                  height: 40,
+                                  decoration: BoxDecoration(
+                                    // ignore: deprecated_member_use
+                                    color: const Color(0xFF101C45).withOpacity(0.08),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(
+                                    Icons.campaign_outlined,
+                                    color: Color(0xFF101C45),
+                                    size: 20,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              notif.title,
+                                              style: TextStyle(
+                                                fontFamily: 'Poppins',
+                                                fontSize: 13,
+                                                fontWeight: isRead
+                                                    ? FontWeight.w500
+                                                    : FontWeight.bold,
+                                                color: const Color(0xFF101C45),
+                                              ),
+                                            ),
+                                          ),
+                                          if (!isRead)
+                                            Container(
+                                              width: 8,
+                                              height: 8,
+                                              decoration: const BoxDecoration(
+                                                color: Color(0xFF101C45),
+                                                shape: BoxShape.circle,
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 3),
+                                      Text(
+                                        notif.body,
+                                        style: TextStyle(
+                                          fontFamily: 'Poppins',
+                                          fontSize: 12,
+                                          color: Colors.grey[600],
+                                          height: 1.4,
+                                        ),
+                                        maxLines: 3,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      const SizedBox(height: 5),
+                                      Text(
+                                        timeStr,
+                                        style: TextStyle(
+                                          fontFamily: 'Poppins',
+                                          fontSize: 11,
+                                          color: Colors.grey[400],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
