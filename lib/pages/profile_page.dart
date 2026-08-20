@@ -3,8 +3,9 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../models/profile_model.dart';
 import '../services/profile_service.dart';
 import '../widgets/skeleton_loader.dart';
-import 'subpages/edit_profile_page.dart'; // Adjust if your folder structure is slightly different
-import 'login.dart'; // Make sure this points to your actual login page file
+import 'subpages/edit_profile_page.dart';
+import 'subpages/my_reports_page.dart';
+import 'login.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -239,7 +240,41 @@ class _ProfilePageState extends State<ProfilePage> {
 
                 const SizedBox(height: 40),
 
-                // --- 4. LOGOUT BUTTON ---
+                // --- 4. VIEW ALL REPORTS BUTTON ---
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const MyReportsPage(),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.article_outlined, color: Colors.white),
+                    label: const Text(
+                      'View All Your Reports',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        fontFamily: 'Poppins',
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF101C45),
+                      padding: const EdgeInsets.symmetric(vertical: 15),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(15),
+                      ),
+                      elevation: 0,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                // --- 5. LOGOUT BUTTON ---
                 SizedBox(
                   width: double.infinity,
                   child: OutlinedButton.icon(

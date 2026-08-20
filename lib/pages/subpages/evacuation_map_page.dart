@@ -9,6 +9,8 @@ import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart' hide Path;
 import 'package:silag/models/evacuation_model.dart';
 import 'package:silag/models/sensor_model.dart';
+import 'package:silag/services/api_config.dart';
+import 'package:silag/services/api_client.dart';
 
 class RouteStep {
   final String instruction;
@@ -148,34 +150,42 @@ class _EvacuationMapPageState extends State<EvacuationMapPage>
     setState(() => _isLoadingRoute = true);
 
     try {
-      final url = Uri.parse(
-        'http://router.project-osrm.org/route/v1/driving/'
-        '${from.longitude},${from.latitude};'
-        '${to.longitude},${to.latitude}'
-        '?overview=full&geometries=geojson&steps=true',
+      final uri = ApiConfig.uri('route/evacuation', version: ApiConfig.v2);
+      final response = await ApiClient().post(
+        uri,
+        body: jsonEncode({
+          'start_lat': from.latitude,
+          'start_lon': from.longitude,
+          'end_lat': to.latitude,
+          'end_lon': to.longitude,
+        }),
       );
 
-      final response = await http.get(url).timeout(const Duration(seconds: 15));
       if (response.statusCode != 200) {
-        throw Exception('Route service unavailable.');
+        throw Exception('Route service unavailable. ${response.body}');
       }
 
-      final data = jsonDecode(response.body);
-      final routes = data['routes'] as List?;
-      if (routes == null || routes.isEmpty) {
+      final bodyData = jsonDecode(response.body);
+      final data = bodyData['data'];
+      
+      final features = data['features'] as List?;
+      if (features == null || features.isEmpty) {
         throw Exception('No route found between these locations.');
       }
 
-      final route = routes[0];
-      final geometry = route['geometry'];
+      final feature = features[0];
+      final geometry = feature['geometry'];
       final coords = geometry['coordinates'] as List;
 
+      // ORS returns [lon, lat]
       final points = coords
           .map<LatLng>((c) => LatLng((c[1] as num).toDouble(), (c[0] as num).toDouble()))
           .toList();
 
-      final distanceMeters = (route['distance'] as num).toDouble();
-      final durationSecs = (route['duration'] as num).toDouble();
+      final properties = feature['properties'];
+      final summary = properties['summary'];
+      final distanceMeters = (summary['distance'] as num).toDouble();
+      final durationSecs = (summary['duration'] as num).toDouble();
 
       final distanceKm = distanceMeters / 1000;
       final distStr = distanceKm < 1
@@ -185,23 +195,31 @@ class _EvacuationMapPageState extends State<EvacuationMapPage>
       final minutes = (durationSecs / 60).round();
       final durStr = minutes < 60 ? '$minutes min' : '${(minutes / 60).floor()}h ${minutes % 60}m';
 
-      final legs = route['legs'] as List?;
+      final segments = properties['segments'] as List?;
       List<RouteStep> parsedSteps = [];
-      if (legs != null && legs.isNotEmpty) {
-        final stepsJson = legs[0]['steps'] as List?;
+      if (segments != null && segments.isNotEmpty) {
+        final stepsJson = segments[0]['steps'] as List?;
         if (stepsJson != null) {
           for (var s in stepsJson) {
-            final maneuver = s['maneuver'];
-            if (maneuver != null) {
-              final loc = maneuver['location'] as List;
-              parsedSteps.add(RouteStep(
-                instruction: _getInstruction(s),
-                modifier: maneuver['modifier'] as String?,
-                type: maneuver['type'] as String?,
-                location: LatLng((loc[1] as num).toDouble(), (loc[0] as num).toDouble()),
-                distance: (s['distance'] as num).toDouble(),
-              ));
+            // ORS step contains 'instruction' directly
+            final instruction = s['instruction'] as String? ?? 'Proceed';
+            final maneuver = s['type'] as int?; // ORS uses int codes for maneuver types, but instruction is enough
+            
+            // To get location, ORS step gives 'way_points' indices into the main coordinates array
+            final wayPoints = s['way_points'] as List?;
+            LatLng loc = points.last;
+            if (wayPoints != null && wayPoints.isNotEmpty) {
+               int idx = wayPoints[0];
+               if (idx >= 0 && idx < points.length) loc = points[idx];
             }
+
+            parsedSteps.add(RouteStep(
+              instruction: instruction,
+              modifier: null, // We'll just rely on the instruction text and default icon
+              type: null,
+              location: loc,
+              distance: (s['distance'] as num).toDouble(),
+            ));
           }
         }
       }
@@ -216,6 +234,8 @@ class _EvacuationMapPageState extends State<EvacuationMapPage>
         _isLoadingRoute = false;
       });
     } catch (e) {
+      print('=== ROUTE ERROR ===');
+      print(e);
       if (!mounted) return;
       final fallbackDist = _haversineKm(from, to);
       setState(() {
@@ -456,6 +476,19 @@ class _EvacuationMapPageState extends State<EvacuationMapPage>
                                 ),
                               ],
                             ),
+                          CircleLayer(
+                            circles: widget.sensors
+                                .where((s) => s.latitude != null && s.longitude != null && s.waterLevel >= 2.5)
+                                .map((s) => CircleMarker(
+                                      point: LatLng(s.latitude!, s.longitude!),
+                                      color: Colors.red.withOpacity(0.3),
+                                      borderStrokeWidth: 2,
+                                      borderColor: Colors.redAccent,
+                                      useRadiusInMeter: true,
+                                      radius: 100, // 100 meter hazard radius
+                                    ))
+                                .toList(),
+                          ),
                           MarkerLayer(
                             markers: [
                               // --- Destination (navigation target) ---

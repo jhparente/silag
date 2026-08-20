@@ -216,5 +216,39 @@ class FloodReportService {
       }
       throw Exception('Network error: $e');
     }
+  } // end submitFloodReport
+
+  // --- FETCH MY REPORTS (for the "View All Your Reports" profile page) ---
+  Future<List<FloodReportModel>> fetchMyReports() async {
+    try {
+      final userId = await _storage.read(key: 'user_id');
+      if (userId == null) {
+        throw Exception('User not authenticated. Please log out and log in again.');
+      }
+      final uri = _buildUri('my_flood_reports', queryParameters: {'user_id': userId});
+      // ApiClient auto-injects the JWT token, no need to pass headers manually
+      final response = await ApiClient().get(uri);
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> body = jsonDecode(response.body);
+        final List<dynamic> data = body['data'] ?? [];
+        return data.map((json) => FloodReportModel.fromJson(json)).toList();
+      } else {
+        if (response.statusCode == 401) {
+          throw Exception('Session expired. Redirecting to login...');
+        }
+        throw Exception('Failed to load your reports. (${response.statusCode})');
+      }
+    } catch (e) {
+      final errStr = e.toString();
+      if (errStr.contains('ClientException') ||
+          errStr.contains('SocketException') ||
+          errStr.contains('Failed to fetch') ||
+          errStr.contains('Connection refused') ||
+          errStr.contains('Network is unreachable')) {
+        throw Exception('Network error occurred. Please try again later.');
+      }
+      rethrow;
+    }
   }
 }

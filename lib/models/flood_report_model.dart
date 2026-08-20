@@ -1,4 +1,5 @@
 class FloodReportModel {
+  final int? reportId;
   final String userId;
   final String uploadedBy;
   final String geocodedAddress;
@@ -8,8 +9,10 @@ class FloodReportModel {
   final String? profilePictureUrl;
   final DateTime reportedAt;
   final DateTime? acceptedAt;
+  final String reportStatus; // 'Pending', 'Approved', 'Rejected'
 
   FloodReportModel({
+    this.reportId,
     required this.userId,
     required this.uploadedBy,
     required this.geocodedAddress,
@@ -19,6 +22,7 @@ class FloodReportModel {
     this.profilePictureUrl,
     required this.reportedAt,
     this.acceptedAt,
+    this.reportStatus = 'Pending',
   });
 
   // Convenience getters for UI compatibility
@@ -33,6 +37,9 @@ class FloodReportModel {
     final String? acceptedAtRaw = json['accepted_at']?.toString();
 
     return FloodReportModel(
+      reportId: json['report_id'] != null
+          ? int.tryParse(json['report_id'].toString())
+          : null,
       userId: json['user_id'].toString(),
       uploadedBy: (json['uploaded_by'] ?? 'Unknown').toString(),
       geocodedAddress:
@@ -50,6 +57,8 @@ class FloodReportModel {
       acceptedAt: acceptedAtRaw != null
           ? DateTime.tryParse(acceptedAtRaw)
           : null,
+      reportStatus: (json['report_status'] ?? 'Pending').toString(),
     );
   }
 }
+
