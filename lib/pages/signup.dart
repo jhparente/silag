@@ -46,18 +46,29 @@ class _SignupState extends State<Signup> {
 
   Future<void> _getCurrentLocation({bool silentErrors = false}) async {
     if (_isLocating) return;
-
     setState(() => _isLocating = true);
 
     try {
       LocationPermission permission = await Geolocator.checkPermission();
+
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
       }
 
-      if (permission == LocationPermission.deniedForever ||
-          permission == LocationPermission.denied) {
-        throw Exception('Location permission denied.');
+      if (permission == LocationPermission.deniedForever) {
+        // User permanently blocked — direct them to Settings
+        if (mounted && !silentErrors) {
+          await _showLocationBlockedDialog(permanent: true);
+        }
+        return;
+      }
+
+      if (permission == LocationPermission.denied) {
+        // User just tapped "Deny" in the permission popup
+        if (mounted && !silentErrors) {
+          await _showLocationBlockedDialog(permanent: false);
+        }
+        return;
       }
 
       final position = await Geolocator.getCurrentPosition(
@@ -79,6 +90,59 @@ class _SignupState extends State<Signup> {
     } finally {
       if (mounted) setState(() => _isLocating = false);
     }
+  }
+
+  /// Shows a dialog explaining that location is required to sign up.
+  /// [permanent] = true → guides user to app Settings.
+  /// [permanent] = false → offers a Retry button.
+  Future<void> _showLocationBlockedDialog({required bool permanent}) async {
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: const [
+            Icon(Icons.location_off, color: Colors.redAccent),
+            SizedBox(width: 8),
+            Text('Location Required'),
+          ],
+        ),
+        content: Text(
+          permanent
+              ? 'Location permission has been permanently denied.\n\n'
+                'SILAG needs your location to determine your barangay when creating an account.\n\n'
+                'Please open Settings and enable Location for SILAG, then come back and try again.'
+              : 'SILAG needs your location to determine your barangay when creating an account.\n\n'
+                'Without it, we cannot register your account. Please allow location access.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF101C45),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            icon: Icon(permanent ? Icons.settings : Icons.refresh),
+            label: Text(permanent ? 'Open Settings' : 'Retry'),
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              if (permanent) {
+                await Geolocator.openAppSettings();
+              } else {
+                await _getCurrentLocation(silentErrors: false);
+              }
+            },
+          ),
+        ],
+      ),
+    );
   }
 
   // --- SIGNUP LOGIC ---
@@ -112,7 +176,19 @@ class _SignupState extends State<Signup> {
     }
 
     if (_latitude == null || _longitude == null) {
-      await _getCurrentLocation(silentErrors: true);
+      // Try once more in case it was silently skipped on init
+      await _getCurrentLocation(silentErrors: false);
+
+      // If still null after attempt, location is not available — block signup
+      if (_latitude == null || _longitude == null) {
+        if (mounted) {
+          await _showLocationBlockedDialog(
+            permanent: await Geolocator.checkPermission() ==
+                LocationPermission.deniedForever,
+          );
+        }
+        return;
+      }
     }
 
     setState(() => _isLoading = true);
@@ -146,11 +222,87 @@ class _SignupState extends State<Signup> {
         );
       }
     } catch (e) {
-      // 5. Show backend errors (like "Mobile number already exists")
-      if (mounted) {
+      if (!mounted) return;
+      final errMsg = e.toString().replaceAll('Exception: ', '');
+
+      // Show a dedicated modal for the Valenzuela City restriction
+      if (errMsg.toLowerCase().contains('valenzuela') ||
+          errMsg.toLowerCase().contains('restricted to residents')) {
+        await showDialog<void>(
+          context: context,
+          barrierDismissible: true,
+          builder: (ctx) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
+            actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            title: Column(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFEEEE),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.location_off_rounded,
+                    color: Color(0xFFD32F2F),
+                    size: 36,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Not Available in Your Area',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF101C45),
+                    fontFamily: 'Poppins',
+                  ),
+                ),
+              ],
+            ),
+            content: const Padding(
+              padding: EdgeInsets.only(top: 8, bottom: 20),
+              child: Text(
+                'SILAG is a flood monitoring and alert system exclusively for residents of '
+                'Valenzuela City, Metro Manila.\n\n'
+                'Your current location is outside Valenzuela City, so we are unable to create an account for you at this time.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Color(0xFF555555),
+                  height: 1.5,
+                ),
+              ),
+            ),
+            actions: [
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF101C45),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: const Text(
+                    'Got it',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Poppins'),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      } else {
+        // Generic snackbar for all other errors (e.g. mobile already exists)
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(e.toString().replaceAll('Exception: ', '')),
+            content: Text(errMsg),
             backgroundColor: Colors.redAccent,
           ),
         );

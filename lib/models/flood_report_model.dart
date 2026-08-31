@@ -10,6 +10,8 @@ class FloodReportModel {
   final DateTime reportedAt;
   final DateTime? acceptedAt;
   final String reportStatus; // 'Pending', 'Approved', 'Rejected'
+  final int? barangayId;
+  final String? barangayName;
 
   FloodReportModel({
     this.reportId,
@@ -23,6 +25,8 @@ class FloodReportModel {
     required this.reportedAt,
     this.acceptedAt,
     this.reportStatus = 'Pending',
+    this.barangayId,
+    this.barangayName,
   });
 
   // Convenience getters for UI compatibility
@@ -35,6 +39,12 @@ class FloodReportModel {
     final String? reportedAtRaw = (json['reported_at'] ?? json['created_at'])
         ?.toString();
     final String? acceptedAtRaw = json['accepted_at']?.toString();
+
+    // Resolve barangay info — may come as a nested join or flat field
+    final dynamic barangayJoin = json['barangays'];
+    final String? resolvedBarangayName = barangayJoin is Map
+        ? barangayJoin['name']?.toString()
+        : json['barangay_name']?.toString();
 
     return FloodReportModel(
       reportId: json['report_id'] != null
@@ -58,6 +68,10 @@ class FloodReportModel {
           ? DateTime.tryParse(acceptedAtRaw)
           : null,
       reportStatus: (json['report_status'] ?? 'Pending').toString(),
+      barangayId: json['barangay_id'] != null
+          ? int.tryParse(json['barangay_id'].toString())
+          : null,
+      barangayName: resolvedBarangayName,
     );
   }
 }

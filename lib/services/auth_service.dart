@@ -151,7 +151,9 @@ class AuthService {
 
         return UserModel.fromJson(userData, normalizedToken);
       } else {
-        final errorMessage = responseBody['message'] ?? 'Registration failed';
+        // FastAPI returns errors in 'detail'; fallback to 'message' then generic
+        final errorMessage =
+            responseBody['detail'] ?? responseBody['message'] ?? 'Registration failed';
         throw Exception(errorMessage);
       }
     } catch (e) {
@@ -163,7 +165,8 @@ class AuthService {
           errStr.contains('Network is unreachable')) {
         throw Exception('Network error occurred. Please try again later.');
       }
-      throw Exception('Server Error: $e');
+      // Re-throw as-is so callers can inspect the actual message
+      rethrow;
     }
   }
 
