@@ -9,7 +9,7 @@ class ApiConfig {
   // Use 'http://10.0.2.2:8000' ONLY for the Android Studio Emulator
   static const String host = String.fromEnvironment(
     'API_HOST',
-    defaultValue: 'http://127.0.0.1:8000',
+    defaultValue: 'https://silag-backend-production-7509.up.railway.app',
   );
 
   // Override with: --dart-define=API_DEFAULT_VERSION=v2
