@@ -84,7 +84,7 @@ class _MainScreenState extends State<MainScreen> {
       body: _pages[_currentIndex],
       extendBody: true,
       bottomNavigationBar: Container(
-        margin: EdgeInsets.fromLTRB(80, 0, 80, 30),
+        margin: EdgeInsets.fromLTRB(80, 0, 80, MediaQuery.of(context).padding.bottom + 16),
         height: 70,
         decoration: BoxDecoration(
           color: Colors.white,

@@ -212,7 +212,9 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
                 _buildInfoField(
                   "Location",
-                  profile.geocodedAddress ?? "Not set",
+                  profile.barangayName != null
+                      ? 'Brgy. ${profile.barangayName}'
+                      : (profile.geocodedAddress ?? "Not set"),
                   Icons.location_on_outlined,
                 ),
                 _buildInfoField(

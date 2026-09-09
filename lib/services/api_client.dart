@@ -90,7 +90,9 @@ class ApiClient {
   }) async {
     final headers = await _authHeaders();
     if (extraHeaders != null) headers.addAll(extraHeaders);
-    final response = await http.get(uri, headers: headers);
+    final response = await http
+        .get(uri, headers: headers)
+        .timeout(const Duration(seconds: 20));
     await _handleUnauthorizedAndBan(response);
     return response;
   }
@@ -102,7 +104,9 @@ class ApiClient {
   }) async {
     final headers = await _authHeaders();
     if (extraHeaders != null) headers.addAll(extraHeaders);
-    final response = await http.post(uri, headers: headers, body: body);
+    final response = await http
+        .post(uri, headers: headers, body: body)
+        .timeout(const Duration(seconds: 20));
     await _handleUnauthorizedAndBan(response);
     return response;
   }
@@ -114,7 +118,9 @@ class ApiClient {
   }) async {
     final headers = await _authHeaders();
     if (extraHeaders != null) headers.addAll(extraHeaders);
-    final response = await http.put(uri, headers: headers, body: body);
+    final response = await http
+        .put(uri, headers: headers, body: body)
+        .timeout(const Duration(seconds: 20));
     await _handleUnauthorizedAndBan(response);
     return response;
   }
@@ -128,7 +134,7 @@ class ApiClient {
     }
     request.headers['Accept'] = 'application/json';
 
-    final streamed = await request.send();
+    final streamed = await request.send().timeout(const Duration(seconds: 30));
     final response = await http.Response.fromStream(streamed);
     final wasHandled = await _handleUnauthorizedAndBan(response);
 

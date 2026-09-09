@@ -34,6 +34,17 @@ class _SafetyPageState extends State<SafetyPage> {
   bool _isRequestingEvacuation = false;
   int _localHotlineCount = 0; // tracks only the user's local hotlines
 
+  // ── Distance filter ──────────────────────────────────────────────────────
+  /// 500   = within 500 m  (default)
+  /// 1000  = within 1 km
+  /// 2000  = within 2 km
+  /// -1    = "Closest Available" – show the 2 nearest, ignoring distance cap
+  /// null  = no filter (show all)
+  int? _distanceFilterMeters = 500;
+  double? _userLat;
+  double? _userLng;
+  bool _isFetchingLocation = false;
+
   // Evacuation request status tracking
   String? _myEvacuationStatus; // 'pending' | 'accepted' | null
   Timer? _statusPoller;
@@ -51,6 +62,8 @@ class _SafetyPageState extends State<SafetyPage> {
       if (mounted) setState(() => _cachedSensors = s);
     }).catchError((_) {});
     _startStatusPolling();
+    // Start fetching location immediately so the default 500 m filter works.
+    _ensureUserLocation();
 
     // Listen for foreground FCM messages
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
@@ -115,6 +128,79 @@ class _SafetyPageState extends State<SafetyPage> {
       _hotlinesFuture = _hotlineService.fetchMyHotlines();
       _evacuationCentersFuture = _evacuationService.fetchEvacuationCenters();
     });
+  }
+
+  // ── Distance filter helpers ──────────────────────────────────────────────
+
+  /// Fetch (or reuse) the user's current position for distance filtering.
+  Future<void> _ensureUserLocation() async {
+    if (_userLat != null && _userLng != null) return;
+    if (_isFetchingLocation) return;
+    setState(() => _isFetchingLocation = true);
+    try {
+      final pos = await _getCurrentPositionForEvacuation();
+      if (mounted) {
+        setState(() {
+          _userLat = pos.latitude;
+          _userLng = pos.longitude;
+        });
+      }
+    } catch (_) {
+      // silently ignore – chips will stay active but filtering may be skipped
+    } finally {
+      if (mounted) setState(() => _isFetchingLocation = false);
+    }
+  }
+
+  /// Apply selected distance filter to [all] centers.
+  /// Returns the subset to display.
+  List<EvacuationModel> _applyDistanceFilter(List<EvacuationModel> all) {
+    if (_distanceFilterMeters == null || _userLat == null || _userLng == null) {
+      return all;
+    }
+
+    // Sort all centers by distance ascending
+    final sorted = [...all];
+    sorted.sort((a, b) {
+      final da = Geolocator.distanceBetween(_userLat!, _userLng!, a.latitude, a.longitude);
+      final db = Geolocator.distanceBetween(_userLat!, _userLng!, b.latitude, b.longitude);
+      return da.compareTo(db);
+    });
+
+    if (_distanceFilterMeters == -1) {
+      // "Closest Available": exclude full centers, then take top-2 nearest.
+      final available = sorted.where((c) => !c.isFull).toList();
+      if (available.isNotEmpty) return available.take(2).toList();
+      // Fallback: all centers are full — still show the 2 nearest so the
+      // user knows where to go, but the card's "FULL" badge will be visible.
+      return sorted.take(2).toList();
+    }
+
+    // Radius filter
+    return sorted
+        .where((c) =>
+            Geolocator.distanceBetween(_userLat!, _userLng!, c.latitude, c.longitude) <=
+            _distanceFilterMeters!)
+        .toList();
+  }
+
+  /// Format distance in metres to a readable string.
+  String _formatDistance(EvacuationModel site) {
+    if (_userLat == null || _userLng == null) return '';
+    final d = Geolocator.distanceBetween(_userLat!, _userLng!, site.latitude, site.longitude);
+    if (d < 1000) return '${d.toStringAsFixed(0)} m away';
+    return '${(d / 1000).toStringAsFixed(1)} km away';
+  }
+
+  /// Called when the user taps a filter chip.
+  Future<void> _onFilterTap(int? meters) async {
+    if (_distanceFilterMeters == meters) {
+      // Toggle off
+      setState(() => _distanceFilterMeters = null);
+      return;
+    }
+    setState(() => _distanceFilterMeters = meters);
+    await _ensureUserLocation();
   }
 
   Future<void> _deleteHotline(HotlineModel hotline) async {
@@ -318,10 +404,37 @@ class _SafetyPageState extends State<SafetyPage> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: appBar(),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(20, 10, 20, 120),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+      body: RefreshIndicator(
+        color: const Color(0xFF101C45),
+        onRefresh: () async {
+          // Re-fetch all data + user location in parallel
+          await Future.wait([
+            Future(() => setState(() {
+              _hotlinesFuture = _hotlineService.fetchMyHotlines();
+              _evacuationCentersFuture = _evacuationService
+                  .fetchEvacuationCenters()
+                  .then((sites) {
+                _cachedEvacuationSites = sites;
+                return sites;
+              });
+            })),
+            _sensorService.fetchSensors().then((s) {
+              if (mounted) setState(() => _cachedSensors = s);
+            }).catchError((_) {}),
+            _checkEvacuationStatus(),
+            // Refresh location so distance filter stays accurate
+            (() async {
+              _userLat = null;
+              _userLng = null;
+              await _ensureUserLocation();
+            })(),
+          ]);
+        },
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: EdgeInsets.fromLTRB(20, 10, 20, MediaQuery.of(context).padding.bottom + 100),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // --- HEADER ---
             const Text(
@@ -403,7 +516,7 @@ class _SafetyPageState extends State<SafetyPage> {
             _buildEvacuationRequestCard(),
             const SizedBox(height: 35),
 
-            // --- EVACUATION CENTERS LIST ---
+            // --- EVACUATION CENTERS HEADER + FILTER CHIPS ---
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -446,6 +559,10 @@ class _SafetyPageState extends State<SafetyPage> {
                 ),
               ],
             ),
+            const SizedBox(height: 10),
+
+            // ── Distance Filter Chips ─────────────────────────────────────
+            _buildDistanceFilterChips(),
             const SizedBox(height: 15),
 
             FutureBuilder<List<EvacuationModel>>(
@@ -463,13 +580,18 @@ class _SafetyPageState extends State<SafetyPage> {
                   return _buildConnectionErrorCard();
                 }
 
-                final centers = snapshot.data ?? [];
+                final allCenters = snapshot.data ?? [];
+                final centers = _applyDistanceFilter(allCenters);
 
-                if (centers.isEmpty) {
+                if (allCenters.isEmpty) {
                   return const Padding(
                     padding: EdgeInsets.symmetric(vertical: 20),
                     child: Center(child: Text("No evacuation centers found.")),
                   );
+                }
+
+                if (centers.isEmpty) {
+                  return _buildNoNearbyCard();
                 }
 
                 return Column(
@@ -567,8 +689,9 @@ class _SafetyPageState extends State<SafetyPage> {
           ],
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   // --- GUIDELINE WIDGETS ---
   Widget _buildGuidelineTile(String title, List<Widget> content) {
@@ -799,6 +922,162 @@ class _SafetyPageState extends State<SafetyPage> {
                       ),
                     ),
                   ),
+                ),
+              ],
+            ),
+          );
+        }
+
+  // ── Distance filter chip row ────────────────────────────────────────────
+  Widget _buildDistanceFilterChips() {
+    const chips = [
+      (label: '500 m',             meters: 500),
+      (label: '1 km',              meters: 1000),
+      (label: '2 km',              meters: 2000),
+      (label: 'Closest Available', meters: -1),
+    ];
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: chips.map((chip) {
+          final isSelected = _distanceFilterMeters == chip.meters;
+          final isLoading  = isSelected && _isFetchingLocation;
+          return Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: GestureDetector(
+              onTap: () => _onFilterTap(chip.meters),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? const Color(0xFF101C45)
+                      : const Color(0xFFEEF1FA),
+                  borderRadius: BorderRadius.circular(30),
+                  border: Border.all(
+                    color: isSelected
+                        ? const Color(0xFF101C45)
+                        : const Color(0xFFCED4E6),
+                    width: 1.5,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (isLoading) ...[
+                      const SizedBox(
+                        width: 12,
+                        height: 12,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                    ] else if (isSelected) ...[
+                      const Icon(
+                        Icons.check_rounded,
+                        size: 14,
+                        color: Colors.white,
+                      ),
+                      const SizedBox(width: 4),
+                    ] else if (chip.meters == -1) ...[
+                      const Icon(
+                        Icons.near_me_rounded,
+                        size: 14,
+                        color: Color(0xFF101C45),
+                      ),
+                      const SizedBox(width: 4),
+                    ] else ...[
+                      const Icon(
+                        Icons.social_distance_rounded,
+                        size: 14,
+                        color: Color(0xFF6B7BA4),
+                      ),
+                      const SizedBox(width: 4),
+                    ],
+                    Text(
+                      chip.label,
+                      style: TextStyle(
+                        fontFamily: 'Poppins',
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: isSelected ? Colors.white : const Color(0xFF101C45),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  // ── Empty state when no centers match the filter ──────────────────────
+  Widget _buildNoNearbyCard() {
+    final filterLabel = _distanceFilterMeters == 500
+        ? '500 m'
+        : _distanceFilterMeters == 1000
+            ? '1 km'
+            : '2 km';
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEEF1FA),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFCED4E6)),
+      ),
+      child: Column(
+        children: [
+          const Icon(
+            Icons.location_off_rounded,
+            size: 36,
+            color: Color(0xFF6B7BA4),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'No evacuation centers within $filterLabel',
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontFamily: 'Poppins',
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+              color: Color(0xFF101C45),
+            ),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Try the “Closest Available” filter to see the nearest centers regardless of distance.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontFamily: 'Poppins',
+              fontSize: 12,
+              color: Color(0xFF6B7BA4),
+            ),
+          ),
+          const SizedBox(height: 12),
+          GestureDetector(
+            onTap: () => _onFilterTap(-1),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF101C45),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Text(
+                'Show Closest Available',
+                style: TextStyle(
+                  fontFamily: 'Poppins',
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
+              ),
+            ),
           ),
         ],
       ),
@@ -896,6 +1175,33 @@ class _SafetyPageState extends State<SafetyPage> {
                               fontFamily: 'Poppins',
                             ),
                           ),
+                          // ── Distance badge ───────────────────────
+                          if (_distanceFilterMeters != null &&
+                              _userLat != null &&
+                              _userLng != null) ...[
+                            const SizedBox(width: 8),
+                            const Text('\u00b7',
+                              style: TextStyle(
+                                color: Colors.white54,
+                                fontSize: 14,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Icon(
+                              Icons.social_distance_rounded,
+                              size: 12,
+                              color: Colors.white70,
+                            ),
+                            const SizedBox(width: 3),
+                            Text(
+                              _formatDistance(site),
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 11,
+                                fontFamily: 'Poppins',
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ],

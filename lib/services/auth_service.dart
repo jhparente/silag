@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -38,14 +39,18 @@ class AuthService {
     required String password,
   }) async {
     try {
-      final response = await http.post(
-        _buildUri('login'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: jsonEncode({'mobile_number': mobileNumber, 'password': password}),
-      );
+      final response = await http
+          .post(
+            _buildUri('login'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: jsonEncode(
+              {'mobile_number': mobileNumber, 'password': password},
+            ),
+          )
+          .timeout(const Duration(seconds: 20));
 
       final Map<String, dynamic> responseBody = jsonDecode(response.body);
       // check if the response is successful and contains the expected data
@@ -89,6 +94,9 @@ class AuthService {
         throw Exception(errorMessage);
       }
     } catch (e) {
+      if (e is TimeoutException) {
+        throw Exception('Request timed out. Please check your connection and try again.');
+      }
       final errStr = e.toString();
       if (errStr.contains('ClientException') ||
           errStr.contains('SocketException') ||
@@ -125,14 +133,16 @@ class AuthService {
         payload['longitude'] = longitude;
       }
 
-      final response = await http.post(
-        _buildUri('register_new_account'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: jsonEncode(payload),
-      );
+      final response = await http
+          .post(
+            _buildUri('register_new_account'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: jsonEncode(payload),
+          )
+          .timeout(const Duration(seconds: 20));
 
       final Map<String, dynamic> responseBody = jsonDecode(response.body);
 
@@ -157,6 +167,9 @@ class AuthService {
         throw Exception(errorMessage);
       }
     } catch (e) {
+      if (e is TimeoutException) {
+        throw Exception('Request timed out. Please check your connection and try again.');
+      }
       final errStr = e.toString();
       if (errStr.contains('ClientException') ||
           errStr.contains('SocketException') ||

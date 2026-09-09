@@ -134,7 +134,7 @@ class _LoginState extends State<Login> {
               children: [
                 // --- LOGO OR ICON ---
                 Image.asset(
-                  'icons/690077655_1761743564788727_1218448248378351958_n.png',
+                  'icons/SILAG LOGO - 1 - Edited.png',
                   height: 90,
                   width: 90,
                 ),

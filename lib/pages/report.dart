@@ -134,7 +134,7 @@ class _ReportPageState extends State<ReportPage> {
               onRefresh: _refresh,
               child: SingleChildScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
+                padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(context).padding.bottom + 100),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [

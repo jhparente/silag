@@ -1,9 +1,13 @@
 // ignore_for_file: deprecated_member_use of withOpacity
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:intl/intl.dart';
 import 'package:silag/models/notification_model.dart';
 import 'package:silag/pages/profile_page.dart';
+import 'package:silag/services/api_config.dart';
+import 'package:silag/services/api_client.dart';
 import 'package:silag/services/notification_service.dart';
 import 'package:silag/services/sensor_service.dart';
 import 'package:silag/services/weather_service.dart';
@@ -29,6 +33,9 @@ class _HomePageState extends State<HomePage> {
   List<NotificationModel> _notifications = [];
   int get _unreadCount => _notifications.where((n) => !n.isReadLocally).length;
 
+  /// Barangay name fetched from the logged-in user's profile.
+  String? _barangayName;
+
   /// Auto-refresh interval — sensors reload every 30 seconds automatically.
   Timer? _refreshTimer;
 
@@ -39,6 +46,7 @@ class _HomePageState extends State<HomePage> {
     _sensorsFuture = _sensorService.fetchSensors();
     _startAutoRefresh();
     _loadNotifications();
+    _loadBarangay();
   }
 
   Future<void> _loadNotifications() async {
@@ -46,6 +54,42 @@ class _HomePageState extends State<HomePage> {
       final list = await _notifService.fetchNotifications();
       if (mounted) setState(() => _notifications = list);
     } catch (_) {}
+  }
+
+  /// Fetches the user profile and extracts the barangay name via the
+  /// joined `barangays(name)` relation returned by the backend.
+  Future<void> _loadBarangay() async {
+    try {
+      const storage = FlutterSecureStorage();
+      final userId = await storage.read(key: 'user_id');
+      if (userId == null) return;
+
+      final response = await ApiClient().get(
+        ApiConfig.uri('users/$userId/profile'),
+      );
+
+      if (response.statusCode == 200) {
+        final body = jsonDecode(response.body) as Map<String, dynamic>;
+        if (body['status'] == 'success') {
+          final data = body['data'] as Map<String, dynamic>;
+
+          // The backend joins barangays(name) as a nested object.
+          String? name;
+          final barangaysRel = data['barangays'];
+          if (barangaysRel is Map) {
+            name = barangaysRel['name']?.toString();
+          }
+          // Fallback: just show the barangay_id if the join is absent
+          name ??= data['barangay_id']?.toString();
+
+          if (mounted && name != null) {
+            setState(() => _barangayName = 'Brgy. $name');
+          }
+        }
+      }
+    } catch (_) {
+      // Silently ignore — header will keep the default placeholder.
+    }
   }
 
   void _startAutoRefresh() {
@@ -86,7 +130,7 @@ class _HomePageState extends State<HomePage> {
         onRefresh: _refreshData,
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(20.0),
+          padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(context).padding.bottom + 100),
           child: Column(
             children: [
               // --- WEATHER SECTION ---
@@ -146,7 +190,6 @@ class _HomePageState extends State<HomePage> {
                   );
                 },
               ),
-              const SizedBox(height: 80),
             ],
           ),
         ),
@@ -1024,9 +1067,9 @@ class _HomePageState extends State<HomePage> {
       title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Brgy. Dalandanan',
-            style: TextStyle(
+          Text(
+            _barangayName ?? 'Loading...',
+            style: const TextStyle(
               fontFamily: 'Poppins',
               fontWeight: FontWeight.bold,
               fontSize: 20,

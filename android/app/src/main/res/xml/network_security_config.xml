@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    This config trusts the user-added and system CAs, which fixes SSL handshake
+    failures on Android 7.1 and below where Let's Encrypt's ISRG Root X1 is not
+    in the default trust store. Without this, Railway (Let's Encrypt) HTTPS calls
+    fail on older devices with a ClientException → "Network error occurred."
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <!-- Trust the system CAs (covers modern Android) -->
+            <certificates src="system" />
+            <!-- Also trust user-installed CAs (covers older Android + Let's Encrypt root) -->
+            <certificates src="user" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
