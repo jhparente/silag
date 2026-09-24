@@ -5,6 +5,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart' hide Path;
 import 'package:silag/models/evacuation_model.dart';
 import 'package:silag/models/sensor_model.dart';
+import 'package:silag/widgets/sensor_pulse_marker.dart';
 
 class SiteOverviewMapPage extends StatefulWidget {
   final List<EvacuationModel> sites;
@@ -32,6 +33,12 @@ class _SiteOverviewMapPageState extends State<SiteOverviewMapPage> {
   void initState() {
     super.initState();
     _fetchUserLocation();
+  }
+
+  @override
+  void dispose() {
+    _mapController.dispose();
+    super.dispose();
   }
 
   Future<void> _fetchUserLocation() async {
@@ -94,10 +101,12 @@ class _SiteOverviewMapPageState extends State<SiteOverviewMapPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0D1B40),
+      backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
-        backgroundColor: const Color(0xFF101C45),
-        foregroundColor: Colors.white,
+        backgroundColor: Colors.white,
+        foregroundColor: const Color(0xFF1E293B),
+        elevation: 0,
+        surfaceTintColor: Colors.transparent,
         title: const Text('Evacuation Sites & Sensors',
             style: TextStyle(fontFamily: 'Poppins', fontSize: 16, fontWeight: FontWeight.bold)),
         actions: [
@@ -119,9 +128,39 @@ class _SiteOverviewMapPageState extends State<SiteOverviewMapPage> {
             ),
             children: [
               TileLayer(
-                urlTemplate: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-                subdomains: const ['a', 'b', 'c', 'd'],
+                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                 userAgentPackageName: 'com.silag.app',
+              ),
+              // Static 100m boundary — visible when zoomed in close enough
+              CircleLayer(
+                circles: widget.sensors
+                    .where((s) => s.latitude != null && s.longitude != null)
+                    .map((s) {
+                      final col = _sensorColor(s.waterLevel);
+                      return CircleMarker(
+                        point: LatLng(s.latitude!, s.longitude!),
+                        color: col.withOpacity(0.10),
+                        borderStrokeWidth: 1.2,
+                        borderColor: col.withOpacity(0.40),
+                        useRadiusInMeter: true,
+                        radius: 100,
+                      );
+                    })
+                    .toList(),
+              ),
+              // Radar-ping markers — always visible at any zoom, self-animating
+              MarkerLayer(
+                markers: widget.sensors
+                    .where((s) => s.latitude != null && s.longitude != null)
+                    .map((s) => Marker(
+                          point: LatLng(s.latitude!, s.longitude!),
+                          width: 80,
+                          height: 80,
+                          child: SensorPulseMarker(
+                            color: _sensorColor(s.waterLevel),
+                          ),
+                        ))
+                    .toList(),
               ),
               MarkerLayer(
                 markers: [
@@ -207,8 +246,10 @@ class _SiteOverviewMapPageState extends State<SiteOverviewMapPage> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: const Color(0xFF101C45).withOpacity(0.9),
+                color: Colors.white.withOpacity(0.95),
                 borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 8, offset: const Offset(0, 2))],
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -234,7 +275,7 @@ class _SiteOverviewMapPageState extends State<SiteOverviewMapPage> {
               right: 0,
               child: Center(
                 child: Text('Getting location…',
-                    style: TextStyle(color: Colors.white54, fontFamily: 'Poppins')),
+                    style: TextStyle(color: Color(0xFF64748B), fontFamily: 'Poppins')),
               ),
             ),
         ],
@@ -256,7 +297,7 @@ class _SiteOverviewMapPageState extends State<SiteOverviewMapPage> {
           child: Icon(icon, color: Colors.white, size: 12),
         ),
         const SizedBox(width: 6),
-        Text(label, style: const TextStyle(color: Colors.white70, fontFamily: 'Poppins', fontSize: 11)),
+        Text(label, style: const TextStyle(color: Color(0xFF334155), fontFamily: 'Poppins', fontSize: 11)),
       ],
     );
   }

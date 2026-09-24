@@ -11,6 +11,7 @@ import 'package:silag/models/evacuation_model.dart';
 import 'package:silag/models/sensor_model.dart';
 import 'package:silag/services/api_config.dart';
 import 'package:silag/services/api_client.dart';
+import 'package:silag/widgets/sensor_pulse_marker.dart';
 
 class RouteStep {
   final String instruction;
@@ -409,7 +410,7 @@ class _EvacuationMapPageState extends State<EvacuationMapPage>
     final center = _userLocation ?? dest;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0D1B40),
+      backgroundColor: const Color(0xFFF5F7FA),
       body: _isLoadingLocation
           ? const Center(
               child: Column(
@@ -419,7 +420,7 @@ class _EvacuationMapPageState extends State<EvacuationMapPage>
                   SizedBox(height: 16),
                   Text(
                     'Getting your location...',
-                    style: TextStyle(color: Colors.white70, fontFamily: 'Poppins'),
+                    style: TextStyle(color: Color(0xFF64748B), fontFamily: 'Poppins'),
                   ),
                 ],
               ),
@@ -435,14 +436,14 @@ class _EvacuationMapPageState extends State<EvacuationMapPage>
                         const SizedBox(height: 12),
                         Text(
                           _errorMessage!,
-                          style: const TextStyle(color: Colors.white70, fontFamily: 'Poppins', fontSize: 13),
+                          style: const TextStyle(color: Color(0xFF64748B), fontFamily: 'Poppins', fontSize: 13),
                           textAlign: TextAlign.center,
                         ),
                         const SizedBox(height: 24),
                         ElevatedButton(
                           onPressed: () => Navigator.pop(context),
-                          style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF101C45)),
-                          child: const Text('Go Back'),
+                          style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00C97A)),
+                          child: const Text('Go Back', style: TextStyle(color: Colors.white)),
                         )
                       ],
                     ),
@@ -460,8 +461,7 @@ class _EvacuationMapPageState extends State<EvacuationMapPage>
                         ),
                         children: [
                           TileLayer(
-                            urlTemplate: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-                            subdomains: const ['a', 'b', 'c', 'd'],
+                            urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                             userAgentPackageName: 'com.silag.app',
                           ),
                           if (_routePoints.isNotEmpty)
@@ -476,16 +476,34 @@ class _EvacuationMapPageState extends State<EvacuationMapPage>
                                 ),
                               ],
                             ),
+                          // Static 100m boundary — visible when zoomed in
                           CircleLayer(
                             circles: widget.sensors
-                                .where((s) => s.latitude != null && s.longitude != null && s.waterLevel >= 2.5)
-                                .map((s) => CircleMarker(
+                                .where((s) => s.latitude != null && s.longitude != null)
+                                .map((s) {
+                                  final col = _sensorColor(s.waterLevel);
+                                  return CircleMarker(
+                                    point: LatLng(s.latitude!, s.longitude!),
+                                    color: col.withOpacity(0.10),
+                                    borderStrokeWidth: 1.2,
+                                    borderColor: col.withOpacity(0.40),
+                                    useRadiusInMeter: true,
+                                    radius: 100,
+                                  );
+                                })
+                                .toList(),
+                          ),
+                          // Radar-ping markers — always visible, self-animating
+                          MarkerLayer(
+                            markers: widget.sensors
+                                .where((s) => s.latitude != null && s.longitude != null)
+                                .map((s) => Marker(
                                       point: LatLng(s.latitude!, s.longitude!),
-                                      color: Colors.red.withOpacity(0.3),
-                                      borderStrokeWidth: 2,
-                                      borderColor: Colors.redAccent,
-                                      useRadiusInMeter: true,
-                                      radius: 100, // 100 meter hazard radius
+                                      width: 80,
+                                      height: 80,
+                                      child: SensorPulseMarker(
+                                        color: _sensorColor(s.waterLevel),
+                                      ),
                                     ))
                                 .toList(),
                           ),
@@ -648,15 +666,16 @@ class _EvacuationMapPageState extends State<EvacuationMapPage>
                           child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF101C45).withOpacity(0.9),
+                              color: Colors.white.withOpacity(0.95),
                               borderRadius: BorderRadius.circular(20),
+                              boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 8)],
                             ),
                             child: const Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
+                                SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF00C97A))),
                                 SizedBox(width: 8),
-                                Text('Calculating route...', style: TextStyle(color: Colors.white, fontSize: 12, fontFamily: 'Poppins')),
+                                Text('Calculating route...', style: TextStyle(color: Color(0xFF334155), fontSize: 12, fontFamily: 'Poppins')),
                               ],
                             ),
                           ),
@@ -670,14 +689,14 @@ class _EvacuationMapPageState extends State<EvacuationMapPage>
                         children: [
                           FloatingActionButton.small(
                             heroTag: 'overview',
-                            backgroundColor: const Color(0xFF101C45),
+                            backgroundColor: Colors.white,
                             onPressed: _fitBounds,
-                            child: const Icon(Icons.map, color: Colors.white),
+                            child: const Icon(Icons.map, color: Color(0xFF334155)),
                           ),
                           const SizedBox(height: 8),
                           FloatingActionButton(
                             heroTag: 'recenter',
-                            backgroundColor: _isFollowing ? const Color(0xFF00C97A) : const Color(0xFF101C45),
+                            backgroundColor: _isFollowing ? const Color(0xFF00C97A) : Colors.white,
                             onPressed: _recenter,
                             child: Icon(Icons.my_location, color: _isFollowing ? Colors.white : const Color(0xFF00C97A)),
                           ),
@@ -691,10 +710,10 @@ class _EvacuationMapPageState extends State<EvacuationMapPage>
                       right: 0,
                       child: Container(
                         padding: const EdgeInsets.fromLTRB(24, 16, 24, 28),
-                        decoration: const BoxDecoration(
-                          color: Color(0xFF101C45),
-                          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-                          boxShadow: [BoxShadow(color: Colors.black45, blurRadius: 10, offset: Offset(0, -2))],
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 16, offset: const Offset(0, -4))],
                         ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -710,7 +729,7 @@ class _EvacuationMapPageState extends State<EvacuationMapPage>
                                 const SizedBox(height: 2),
                                 Text(
                                   'To ${widget.destName}',
-                                  style: const TextStyle(color: Colors.white70, fontSize: 13, fontFamily: 'Poppins'),
+                                  style: const TextStyle(color: Color(0xFF64748B), fontSize: 13, fontFamily: 'Poppins'),
                                 ),
                               ],
                             ),
