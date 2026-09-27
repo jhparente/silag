@@ -1,8 +1,17 @@
+// ignore_for_file: deprecated_member_use
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:silag/main_screen.dart'; // Make sure this path is correct for your app!
+import 'package:silag/main_screen.dart';
 import '../services/auth_service.dart';
+
+// ---------------------------------------------------------------------------
+// Signup — 3-step flow:
+//   Step 1: Fill in username, mobile number, password
+//   Step 2: Enter OTP sent via SMS
+//   Step 3: Account created → navigate to MainScreen
+// ---------------------------------------------------------------------------
 
 class Signup extends StatefulWidget {
   const Signup({super.key});
@@ -11,13 +20,23 @@ class Signup extends StatefulWidget {
   State<Signup> createState() => _SignupState();
 }
 
-class _SignupState extends State<Signup> {
+class _SignupState extends State<Signup> with SingleTickerProviderStateMixin {
   final _authService = AuthService();
 
+  // Step tracking: 1 = form, 2 = OTP
+  int _step = 1;
+
+  // Step 1 controllers
   final _usernameController = TextEditingController();
   final _mobileController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
+
+  // Step 2 – OTP
+  final List<TextEditingController> _otpControllers =
+      List.generate(6, (_) => TextEditingController());
+  final List<FocusNode> _otpFocusNodes =
+      List.generate(6, (_) => FocusNode());
 
   bool _isLoading = false;
   bool _obscurePassword = true;
@@ -26,294 +45,280 @@ class _SignupState extends State<Signup> {
   double? _latitude;
   double? _longitude;
 
+  // OTP resend timer
+  int _resendCooldown = 0;
+  Timer? _resendTimer;
+
+  // Verified phone token from backend
+  String? _phoneVerificationToken;
+
+  // Animation controller for step transitions
+  late final AnimationController _animCtrl;
+  late final Animation<double> _fadeAnim;
+
   @override
   void initState() {
     super.initState();
+    _animCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 350),
+    );
+    _fadeAnim = CurvedAnimation(parent: _animCtrl, curve: Curves.easeInOut);
+    _animCtrl.forward();
+    // Silently try to get location in background
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _getCurrentLocation(silentErrors: true);
+      _getCurrentLocation(silent: true);
     });
   }
 
-  void _handleMobileChanged(String value) {
-    if (!value.startsWith('0')) return;
-
-    final updated = value.replaceFirst(RegExp(r'^0+'), '');
-    _mobileController.value = TextEditingValue(
-      text: updated,
-      selection: TextSelection.collapsed(offset: updated.length),
-    );
+  @override
+  void dispose() {
+    _animCtrl.dispose();
+    _usernameController.dispose();
+    _mobileController.dispose();
+    _passwordController.dispose();
+    _confirmPasswordController.dispose();
+    for (final c in _otpControllers) c.dispose();
+    for (final f in _otpFocusNodes) f.dispose();
+    _resendTimer?.cancel();
+    super.dispose();
   }
 
-  Future<void> _getCurrentLocation({bool silentErrors = false}) async {
+  // ---- Location ----
+  Future<void> _getCurrentLocation({bool silent = false}) async {
     if (_isLocating) return;
     setState(() => _isLocating = true);
-
     try {
-      LocationPermission permission = await Geolocator.checkPermission();
-
+      var permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
       }
-
-      if (permission == LocationPermission.deniedForever) {
-        // User permanently blocked — direct them to Settings
-        if (mounted && !silentErrors) {
-          await _showLocationBlockedDialog(permanent: true);
-        }
+      if (permission == LocationPermission.deniedForever ||
+          permission == LocationPermission.denied) {
         return;
       }
-
-      if (permission == LocationPermission.denied) {
-        // User just tapped "Deny" in the permission popup
-        if (mounted && !silentErrors) {
-          await _showLocationBlockedDialog(permanent: false);
-        }
-        return;
-      }
-
-      final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-        ),
+      final pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
       );
-
       if (!mounted) return;
       setState(() {
-        _latitude = position.latitude;
-        _longitude = position.longitude;
+        _latitude = pos.latitude;
+        _longitude = pos.longitude;
       });
-    } catch (e) {
-      if (!mounted || silentErrors) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Could not get location: $e')));
+    } catch (_) {
+      // Location is optional now — don't block the user
     } finally {
       if (mounted) setState(() => _isLocating = false);
     }
   }
 
-  /// Shows a dialog explaining that location is required to sign up.
-  /// [permanent] = true → guides user to app Settings.
-  /// [permanent] = false → offers a Retry button.
-  Future<void> _showLocationBlockedDialog({required bool permanent}) async {
-    await showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(
-          children: const [
-            Icon(Icons.location_off, color: Colors.redAccent),
-            SizedBox(width: 8),
-            Text('Location Required'),
-          ],
-        ),
-        content: Text(
-          permanent
-              ? 'Location permission has been permanently denied.\n\n'
-                'SILAG needs your location to determine your barangay when creating an account.\n\n'
-                'Please open Settings and enable Location for SILAG, then come back and try again.'
-              : 'SILAG needs your location to determine your barangay when creating an account.\n\n'
-                'Without it, we cannot register your account. Please allow location access.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF101C45),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-            icon: Icon(permanent ? Icons.settings : Icons.refresh),
-            label: Text(permanent ? 'Open Settings' : 'Retry'),
-            onPressed: () async {
-              Navigator.of(ctx).pop();
-              if (permanent) {
-                await Geolocator.openAppSettings();
-              } else {
-                await _getCurrentLocation(silentErrors: false);
-              }
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  // --- SIGNUP LOGIC ---
-  Future<void> _handleSignup() async {
+  // ---- Step 1 → Step 2: validate form and send OTP ----
+  Future<void> _handleSendOtp() async {
     final mobileDigits = _mobileController.text.trim();
 
-    // 1. Basic validation
-    if (_usernameController.text.isEmpty ||
+    if (_usernameController.text.trim().isEmpty ||
         mobileDigits.isEmpty ||
         _passwordController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Please fill in all fields.")),
-      );
+      _showSnack('Please fill in all fields.');
       return;
     }
-
     if (mobileDigits.length != 10 || !mobileDigits.startsWith('9')) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Enter a valid PH mobile number (9XXXXXXXXX).'),
-        ),
-      );
+      _showSnack('Enter a valid PH mobile number (9XXXXXXXXX).');
       return;
     }
-
     if (_passwordController.text != _confirmPasswordController.text) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text("Passwords do not match!")));
+      _showSnack('Passwords do not match.');
       return;
     }
-
-    if (_latitude == null || _longitude == null) {
-      // Try once more in case it was silently skipped on init
-      await _getCurrentLocation(silentErrors: false);
-
-      // If still null after attempt, location is not available — block signup
-      if (_latitude == null || _longitude == null) {
-        if (mounted) {
-          await _showLocationBlockedDialog(
-            permanent: await Geolocator.checkPermission() ==
-                LocationPermission.deniedForever,
-          );
-        }
-        return;
-      }
+    if (_passwordController.text.length < 6) {
+      _showSnack('Password must be at least 6 characters.');
+      return;
     }
 
     setState(() => _isLoading = true);
-
     try {
-      // 2. Call the register function in your Python Backend
-      // This will automatically save the access_token inside the service!
-      final user = await _authService.register(
-        username: _usernameController.text.trim(),
-        mobileNumber: '+63$mobileDigits',
-        password: _passwordController.text.trim(),
-        latitude: _latitude,
-        longitude: _longitude,
+      final fullMobile = '+63$mobileDigits';
+      final result = await _authService.requestRegistrationOtp(
+        mobileNumber: fullMobile,
       );
 
-      // 3. Success! Show a welcome message
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Account created! Welcome, ${user.username}!"),
-            backgroundColor: Colors.green,
-          ),
-        );
-
-        // 4. Destroy the signup/login pages and route directly to MainScreen
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(builder: (context) => const MainScreen()),
-          (Route<dynamic> route) =>
-              false, // This prevents them from hitting the back button to return to Login
-        );
-      }
-    } catch (e) {
       if (!mounted) return;
-      final errMsg = e.toString().replaceAll('Exception: ', '');
 
-      // Show a dedicated modal for the Valenzuela City restriction
-      if (errMsg.toLowerCase().contains('valenzuela') ||
-          errMsg.toLowerCase().contains('restricted to residents')) {
+      // Show debug code hint in development
+      final debugCode = result['debug_code'] as String?;
+
+      _transitionToStep(2);
+      _startResendTimer();
+
+      if (debugCode != null) {
+        // Staging mode: show OTP in a dialog so testers can proceed
         await showDialog<void>(
           context: context,
-          barrierDismissible: true,
           builder: (ctx) => AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-            contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
-            actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-            title: Column(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: const Row(
               children: [
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFFEEEE),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.location_off_rounded,
-                    color: Color(0xFFD32F2F),
-                    size: 36,
-                  ),
+                Icon(Icons.bug_report, color: Color(0xFF101C45)),
+                SizedBox(width: 8),
+                Text('Staging Mode', style: TextStyle(fontFamily: 'Poppins', fontSize: 16)),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'SMS is in staging mode. Your verification code is:',
+                  style: TextStyle(fontFamily: 'Poppins', fontSize: 13),
                 ),
                 const SizedBox(height: 12),
-                const Text(
-                  'Not Available in Your Area',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 18,
+                Text(
+                  debugCode,
+                  style: const TextStyle(
+                    fontFamily: 'Poppins',
+                    fontSize: 32,
                     fontWeight: FontWeight.bold,
                     color: Color(0xFF101C45),
-                    fontFamily: 'Poppins',
+                    letterSpacing: 6,
                   ),
                 ),
               ],
             ),
-            content: const Padding(
-              padding: EdgeInsets.only(top: 8, bottom: 20),
-              child: Text(
-                'SILAG is a flood monitoring and alert system exclusively for residents of '
-                'Valenzuela City, Metro Manila.\n\n'
-                'Your current location is outside Valenzuela City, so we are unable to create an account for you at this time.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Color(0xFF555555),
-                  height: 1.5,
-                ),
-              ),
-            ),
             actions: [
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF101C45),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  onPressed: () => Navigator.of(ctx).pop(),
-                  child: const Text(
-                    'Got it',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Poppins'),
-                  ),
-                ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('OK', style: TextStyle(fontFamily: 'Poppins')),
               ),
             ],
           ),
         );
-      } else {
-        // Generic snackbar for all other errors (e.g. mobile already exists)
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(errMsg),
-            backgroundColor: Colors.redAccent,
-          ),
-        );
       }
+    } catch (e) {
+      if (!mounted) return;
+      _showSnack(e.toString().replaceAll('Exception: ', ''));
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
+  // ---- Step 2: verify OTP ----
+  Future<void> _handleVerifyOtp() async {
+    final code = _otpControllers.map((c) => c.text.trim()).join();
+    if (code.length != 6) {
+      _showSnack('Please enter all 6 digits of your OTP.');
+      return;
+    }
+
+    final mobileDigits = _mobileController.text.trim();
+    final fullMobile = '+63$mobileDigits';
+
+    setState(() => _isLoading = true);
+    try {
+      final token = await _authService.verifyRegistrationOtp(
+        mobileNumber: fullMobile,
+        otpCode: code,
+      );
+      _phoneVerificationToken = token;
+
+      // OTP verified → create account
+      await _createAccount();
+    } catch (e) {
+      if (!mounted) return;
+      _showSnack(e.toString().replaceAll('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  // ---- Final step: create the account ----
+  Future<void> _createAccount() async {
+    try {
+      final mobileDigits = _mobileController.text.trim();
+      final user = await _authService.register(
+        username: _usernameController.text.trim(),
+        mobileNumber: '+63$mobileDigits',
+        password: _passwordController.text.trim(),
+        phoneVerificationToken: _phoneVerificationToken!,
+        latitude: _latitude,
+        longitude: _longitude,
+      );
+
+      if (!mounted) return;
+      _showSnack('Account created! Welcome, ${user.username}!', color: Colors.green);
+
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const MainScreen()),
+        (_) => false,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      _showSnack(e.toString().replaceAll('Exception: ', ''));
+    }
+  }
+
+  // ---- Resend OTP ----
+  Future<void> _handleResendOtp() async {
+    if (_resendCooldown > 0) return;
+    final mobileDigits = _mobileController.text.trim();
+    setState(() => _isLoading = true);
+    try {
+      final result = await _authService.requestRegistrationOtp(
+        mobileNumber: '+63$mobileDigits',
+      );
+      _startResendTimer();
+      final debugCode = result['debug_code'] as String?;
+      if (!mounted) return;
+      if (debugCode != null) {
+        _showSnack('Staging: your OTP is $debugCode');
+      } else {
+        _showSnack('New OTP sent successfully!', color: Colors.green);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      _showSnack(e.toString().replaceAll('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  void _startResendTimer() {
+    _resendCooldown = 60;
+    _resendTimer?.cancel();
+    _resendTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) { t.cancel(); return; }
+      setState(() {
+        _resendCooldown--;
+        if (_resendCooldown <= 0) t.cancel();
+      });
+    });
+  }
+
+  void _transitionToStep(int step) {
+    _animCtrl.reverse().then((_) {
+      if (!mounted) return;
+      setState(() => _step = step);
+      _animCtrl.forward();
+      // Auto-focus first OTP field
+      if (step == 2) {
+        Future.delayed(const Duration(milliseconds: 100), () {
+          if (mounted) _otpFocusNodes[0].requestFocus();
+        });
+      }
+    });
+  }
+
+  void _showSnack(String msg, {Color color = Colors.redAccent}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg, style: const TextStyle(fontFamily: 'Poppins')),
+        backgroundColor: color,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
+  }
+
+  // ---- Build ----
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -323,246 +328,421 @@ class _SignupState extends State<Signup> {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Color(0xFF101C45)),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () {
+            if (_step == 2) {
+              _transitionToStep(1);
+            } else {
+              Navigator.pop(context);
+            }
+          },
         ),
       ),
       body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+        child: FadeTransition(
+          opacity: _fadeAnim,
+          child: _step == 1 ? _buildStep1() : _buildStep2(),
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // STEP 1: Registration form
+  // ============================================================
+  Widget _buildStep1() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Logo
+          Image.asset('icons/SILAG LOGO - 1 - Edited.png', height: 72, width: 72),
+          const SizedBox(height: 16),
+
+          const Text(
+            'Create Account',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 28, fontWeight: FontWeight.bold,
+              color: Color(0xFF101C45), fontFamily: 'Poppins',
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Join your community dashboard',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 14, color: Colors.grey[600], fontFamily: 'Poppins'),
+          ),
+          const SizedBox(height: 32),
+
+          // Step indicator
+          _buildStepIndicator(1),
+          const SizedBox(height: 28),
+
+          // Username
+          _buildLabel('Username'),
+          TextField(
+            controller: _usernameController,
+            maxLength: 20,
+            inputFormatters: [LengthLimitingTextInputFormatter(20)],
+            decoration: _inputDecoration(hint: 'e.g. JuanDelaCruz', icon: Icons.person_outline),
+          ),
+          const SizedBox(height: 20),
+
+          // Mobile
+          _buildLabel('Mobile Number'),
+          TextField(
+            controller: _mobileController,
+            keyboardType: TextInputType.phone,
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly,
+              LengthLimitingTextInputFormatter(10),
+            ],
+            decoration: _inputDecoration(hint: '9XXXXXXXXX', icon: Icons.phone_android)
+                .copyWith(
+              prefixText: '+63 ',
+              prefixStyle: const TextStyle(
+                color: Color(0xFF101C45), fontWeight: FontWeight.w600, fontFamily: 'Poppins',
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+
+          // Location indicator (subtle, optional)
+          Row(
+            children: [
+              Icon(
+                _isLocating
+                    ? Icons.my_location
+                    : (_latitude != null ? Icons.location_on : Icons.location_off),
+                size: 14,
+                color: _latitude != null ? const Color(0xFF101C45) : Colors.grey[400],
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  _isLocating
+                      ? 'Getting location...'
+                      : (_latitude != null
+                          ? 'Location captured'
+                          : 'Location not available (optional)'),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: _latitude != null ? Colors.grey[600] : Colors.grey[400],
+                    fontFamily: 'Poppins',
+                  ),
+                ),
+              ),
+              if (!_isLocating)
+                GestureDetector(
+                  onTap: _getCurrentLocation,
+                  child: Text(
+                    'Refresh',
+                    style: TextStyle(
+                      fontFamily: 'Poppins', fontSize: 12,
+                      color: const Color(0xFF101C45), fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 20),
+
+          // Password
+          _buildLabel('Password'),
+          TextField(
+            controller: _passwordController,
+            obscureText: _obscurePassword,
+            decoration: _inputDecoration(hint: 'Create a password', icon: Icons.lock_outline)
+                .copyWith(
+              suffixIcon: IconButton(
+                icon: Icon(
+                  _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                  color: Colors.grey[500],
+                ),
+                onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          // Confirm Password
+          _buildLabel('Confirm Password'),
+          TextField(
+            controller: _confirmPasswordController,
+            obscureText: _obscureConfirm,
+            decoration: _inputDecoration(hint: 'Re-enter your password', icon: Icons.lock_outline)
+                .copyWith(
+              suffixIcon: IconButton(
+                icon: Icon(
+                  _obscureConfirm ? Icons.visibility_off : Icons.visibility,
+                  color: Colors.grey[500],
+                ),
+                onPressed: () => setState(() => _obscureConfirm = !_obscureConfirm),
+              ),
+            ),
+          ),
+          const SizedBox(height: 32),
+
+          // Send OTP Button
+          SizedBox(
+            height: 55,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF101C45),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                elevation: 2,
+              ),
+              onPressed: _isLoading ? null : _handleSendOtp,
+              child: _isLoading
+                  ? const SizedBox(
+                      height: 22, width: 22,
+                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
+                    )
+                  : const Text(
+                      'Send Verification Code',
+                      style: TextStyle(
+                        color: Colors.white, fontSize: 16,
+                        fontWeight: FontWeight.bold, fontFamily: 'Poppins',
+                      ),
+                    ),
+            ),
+          ),
+          const SizedBox(height: 24),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // STEP 2: OTP Verification
+  // ============================================================
+  Widget _buildStep2() {
+    final mobileDigits = _mobileController.text.trim();
+    final maskedMobile = mobileDigits.length >= 4
+        ? '+63 9${' ' * 0}${'*' * 6}${mobileDigits.substring(mobileDigits.length - 4)}'
+        : '+63 $mobileDigits';
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Image.asset('icons/SILAG LOGO - 1 - Edited.png', height: 72, width: 72),
+          const SizedBox(height: 16),
+
+          const Text(
+            'Verify Your Number',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 26, fontWeight: FontWeight.bold,
+              color: Color(0xFF101C45), fontFamily: 'Poppins',
+            ),
+          ),
+          const SizedBox(height: 8),
+          RichText(
+            textAlign: TextAlign.center,
+            text: TextSpan(
+              style: TextStyle(fontSize: 14, color: Colors.grey[600], fontFamily: 'Poppins'),
               children: [
-                // --- LOGO ---
-                Image.asset(
-                  'icons/SILAG LOGO - 1 - Edited.png',
-                  height: 75,
-                  width: 75,
-                ),
-                const SizedBox(height: 16),
-
-                // --- HEADER TEXT ---
-                const Text(
-                  "Create Account",
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF101C45),
-                    fontFamily: 'Poppins',
+                const TextSpan(text: 'We sent a 6-digit code to\n'),
+                TextSpan(
+                  text: maskedMobile,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold, color: Color(0xFF101C45),
                   ),
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  "Join your community dashboard today",
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey[600],
-                    fontFamily: 'Poppins',
-                  ),
-                ),
-                const SizedBox(height: 40),
-
-                // --- USERNAME FIELD ---
-                _buildLabel("Username"),
-                TextField(
-                  controller: _usernameController,
-                  maxLength: 20,
-                  inputFormatters: [
-                    LengthLimitingTextInputFormatter(20),
-                  ],
-                  decoration: _inputDecoration(
-                    hint: "e.g. JuanDelaCruz",
-                    prefixIcon: Icons.person_outline,
-                  ),
-                ),
-                const SizedBox(height: 20),
-
-                // --- MOBILE NUMBER FIELD ---
-                _buildLabel("Mobile Number"),
-                TextField(
-                  controller: _mobileController,
-                  keyboardType: TextInputType.phone,
-                  onChanged: _handleMobileChanged,
-                  inputFormatters: [
-                    FilteringTextInputFormatter.digitsOnly,
-                    LengthLimitingTextInputFormatter(10),
-                  ],
-                  decoration:
-                      _inputDecoration(
-                        hint: "9XXXXXXXXX",
-                        prefixIcon: Icons.phone_android,
-                      ).copyWith(
-                        prefixText: '+63 ',
-                        prefixStyle: const TextStyle(
-                          color: Color(0xFF101C45),
-                          fontWeight: FontWeight.w600,
-                          fontFamily: 'Poppins',
-                        ),
-                      ),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Icon(
-                      Icons.my_location,
-                      size: 18,
-                      color: _isLocating
-                          ? Colors.orange
-                          : const Color(0xFF101C45),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        _isLocating
-                            ? 'Getting your location...'
-                            : (_latitude != null && _longitude != null)
-                            ? 'Lat: ${_latitude!.toStringAsFixed(6)}, Lng: ${_longitude!.toStringAsFixed(6)}'
-                            : 'Location not available',
-                        style: TextStyle(
-                          color: Colors.grey[700],
-                          fontFamily: 'Poppins',
-                          fontSize: 12,
-                        ),
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: _isLocating ? null : _getCurrentLocation,
-                      child: const Text(
-                        'Refresh',
-                        style: TextStyle(
-                          fontFamily: 'Poppins',
-                          color: Color(0xFF101C45),
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 20),
-
-                // --- PASSWORD FIELD ---
-                _buildLabel("Password"),
-                TextField(
-                  controller: _passwordController,
-                  obscureText: _obscurePassword,
-                  decoration:
-                      _inputDecoration(
-                        hint: "Create a password",
-                        prefixIcon: Icons.lock_outline,
-                      ).copyWith(
-                        suffixIcon: IconButton(
-                          icon: Icon(
-                            _obscurePassword
-                                ? Icons.visibility_off
-                                : Icons.visibility,
-                            color: Colors.grey[500],
-                          ),
-                          onPressed: () {
-                            setState(
-                              () => _obscurePassword = !_obscurePassword,
-                            );
-                          },
-                        ),
-                      ),
-                ),
-                const SizedBox(height: 20),
-
-                // --- CONFIRM PASSWORD FIELD ---
-                _buildLabel("Confirm Password"),
-                TextField(
-                  controller: _confirmPasswordController,
-                  obscureText: _obscureConfirm,
-                  decoration:
-                      _inputDecoration(
-                        hint: "Re-enter your password",
-                        prefixIcon: Icons.lock_outline,
-                      ).copyWith(
-                        suffixIcon: IconButton(
-                          icon: Icon(
-                            _obscureConfirm
-                                ? Icons.visibility_off
-                                : Icons.visibility,
-                            color: Colors.grey[500],
-                          ),
-                          onPressed: () {
-                            setState(() => _obscureConfirm = !_obscureConfirm);
-                          },
-                        ),
-                      ),
-                ),
-                const SizedBox(height: 40),
-
-                // --- SIGN UP BUTTON ---
-                SizedBox(
-                  height: 55,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF101C45),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      elevation: 2,
-                    ),
-                    onPressed: _isLoading ? null : _handleSignup,
-                    child: _isLoading
-                        ? const SizedBox(
-                            height: 24,
-                            width: 24,
-                            child: CircularProgressIndicator(
-                              color: Colors.white,
-                              strokeWidth: 2.5,
-                            ),
-                          )
-                        : const Text(
-                            "Sign Up",
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              fontFamily: 'Poppins',
-                            ),
-                          ),
-                  ),
-                ),
-                const SizedBox(height: 20),
               ],
             ),
           ),
-        ),
+          const SizedBox(height: 28),
+
+          // Step indicator
+          _buildStepIndicator(2),
+          const SizedBox(height: 36),
+
+          // OTP boxes
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: List.generate(6, (i) => _buildOtpBox(i)),
+          ),
+          const SizedBox(height: 10),
+
+          // Resend row
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                "Didn't receive the code? ",
+                style: TextStyle(fontFamily: 'Poppins', fontSize: 13, color: Colors.grey[600]),
+              ),
+              _resendCooldown > 0
+                  ? Text(
+                      'Resend in ${_resendCooldown}s',
+                      style: const TextStyle(
+                        fontFamily: 'Poppins', fontSize: 13,
+                        color: Colors.grey, fontWeight: FontWeight.w600,
+                      ),
+                    )
+                  : GestureDetector(
+                      onTap: _isLoading ? null : _handleResendOtp,
+                      child: const Text(
+                        'Resend',
+                        style: TextStyle(
+                          fontFamily: 'Poppins', fontSize: 13,
+                          color: Color(0xFF101C45), fontWeight: FontWeight.bold,
+                          decoration: TextDecoration.underline,
+                        ),
+                      ),
+                    ),
+            ],
+          ),
+          const SizedBox(height: 40),
+
+          // SMS preview hint
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF0F4FF),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFF101C45).withOpacity(0.15)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.sms_outlined, size: 20, color: Color(0xFF101C45)),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Check your SMS from SILAG for the 6-digit verification code.',
+                    style: TextStyle(
+                      fontFamily: 'Poppins', fontSize: 12.5, color: Colors.grey[700],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 32),
+
+          // Verify Button
+          SizedBox(
+            height: 55,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF101C45),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                elevation: 2,
+              ),
+              onPressed: _isLoading ? null : _handleVerifyOtp,
+              child: _isLoading
+                  ? const SizedBox(
+                      height: 22, width: 22,
+                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
+                    )
+                  : const Text(
+                      'Verify & Create Account',
+                      style: TextStyle(
+                        color: Colors.white, fontSize: 16,
+                        fontWeight: FontWeight.bold, fontFamily: 'Poppins',
+                      ),
+                    ),
+            ),
+          ),
+          const SizedBox(height: 24),
+        ],
       ),
     );
   }
 
-  // --- UI HELPERS ---
+  Widget _buildOtpBox(int index) {
+    return SizedBox(
+      width: 46,
+      height: 56,
+      child: TextField(
+        controller: _otpControllers[index],
+        focusNode: _otpFocusNodes[index],
+        keyboardType: TextInputType.number,
+        textAlign: TextAlign.center,
+        maxLength: 1,
+        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+        style: const TextStyle(
+          fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF101C45),
+        ),
+        decoration: InputDecoration(
+          counterText: '',
+          filled: true,
+          fillColor: Colors.grey[50],
+          contentPadding: EdgeInsets.zero,
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide(color: Colors.grey[300]!),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: Color(0xFF101C45), width: 2),
+          ),
+        ),
+        onChanged: (val) {
+          if (val.isNotEmpty && index < 5) {
+            _otpFocusNodes[index + 1].requestFocus();
+          } else if (val.isEmpty && index > 0) {
+            _otpFocusNodes[index - 1].requestFocus();
+          }
+          // Auto-submit when all 6 digits filled
+          final code = _otpControllers.map((c) => c.text).join();
+          if (code.length == 6 && !_isLoading) {
+            _handleVerifyOtp();
+          }
+        },
+      ),
+    );
+  }
+
+  // Step indicator dots
+  Widget _buildStepIndicator(int currentStep) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [1, 2].map((step) {
+        final isActive = step == currentStep;
+        final isDone = step < currentStep;
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
+          margin: const EdgeInsets.symmetric(horizontal: 4),
+          width: isActive ? 32 : 10,
+          height: 10,
+          decoration: BoxDecoration(
+            color: isActive || isDone
+                ? const Color(0xFF101C45)
+                : Colors.grey[300],
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: isDone
+              ? const Icon(Icons.check, size: 8, color: Colors.white)
+              : null,
+        );
+      }).toList(),
+    );
+  }
+
+  // ---- UI Helpers ----
   Widget _buildLabel(String text) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8.0, left: 4.0),
+      padding: const EdgeInsets.only(bottom: 8, left: 4),
       child: Text(
         text,
         style: const TextStyle(
-          color: Color(0xFF101C45),
-          fontWeight: FontWeight.bold,
-          fontSize: 14,
-          fontFamily: 'Poppins',
+          color: Color(0xFF101C45), fontWeight: FontWeight.bold,
+          fontSize: 14, fontFamily: 'Poppins',
         ),
       ),
     );
   }
 
-  InputDecoration _inputDecoration({
-    required String hint,
-    required IconData prefixIcon,
-  }) {
+  InputDecoration _inputDecoration({required String hint, required IconData icon}) {
     return InputDecoration(
       hintText: hint,
-      hintStyle: TextStyle(
-        color: Colors.grey[400],
-        fontSize: 14,
-        fontFamily: 'Poppins',
-      ),
-      prefixIcon: Icon(prefixIcon, color: Colors.grey[500]),
+      hintStyle: TextStyle(color: Colors.grey[400], fontSize: 14, fontFamily: 'Poppins'),
+      prefixIcon: Icon(icon, color: Colors.grey[500]),
       filled: true,
       fillColor: Colors.grey[50],
       contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
@@ -575,14 +755,5 @@ class _SignupState extends State<Signup> {
         borderSide: const BorderSide(color: Color(0xFF101C45), width: 2),
       ),
     );
-  }
-
-  @override
-  void dispose() {
-    _usernameController.dispose();
-    _mobileController.dispose();
-    _passwordController.dispose();
-    _confirmPasswordController.dispose();
-    super.dispose();
   }
 }

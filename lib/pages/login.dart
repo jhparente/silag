@@ -91,6 +91,9 @@ class _LoginState extends State<Login> {
           SnackBar(
             content: Text("Welcome back, ${user.username}!"),
             backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            margin: const EdgeInsets.only(left: 16, right: 16, bottom: 10), // Elevate above nav bar
           ),
         );
 

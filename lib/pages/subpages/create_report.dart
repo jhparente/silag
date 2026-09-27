@@ -140,86 +140,6 @@ class _CreateReportPageState extends State<CreateReportPage> {
     }
   }
 
-  // --- VALENZUELA CITY BOUNDING BOX CHECK ---
-  // Valenzuela City, Metro Manila approximate bounding box:
-  //   Latitude:  14.65 – 14.77
-  //   Longitude: 120.91 – 121.05
-  bool _isInsideValenzuela(double lat, double lng) {
-    return lat >= 14.65 && lat <= 14.77 && lng >= 120.91 && lng <= 121.05;
-  }
-
-  Future<void> _showOutsideValenzuelaDialog() async {
-    await showDialog<void>(
-      context: context,
-      barrierDismissible: true,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
-        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-        title: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: const BoxDecoration(
-                color: Color(0xFFFFEEEE),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.wrong_location_rounded,
-                color: Color(0xFFD32F2F),
-                size: 36,
-              ),
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              'Outside Valenzuela City',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF101C45),
-                fontFamily: 'Poppins',
-              ),
-            ),
-          ],
-        ),
-        content: const Padding(
-          padding: EdgeInsets.only(top: 8, bottom: 20),
-          child: Text(
-            'Flood reports can only be submitted from within Valenzuela City, Metro Manila.\n\n'
-            'Your current location is outside the city boundaries. Please move to a valid area and try again.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 14,
-              color: Color(0xFF555555),
-              height: 1.5,
-            ),
-          ),
-        ),
-        actions: [
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF101C45),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text(
-                'Got it',
-                style: TextStyle(fontWeight: FontWeight.bold, fontFamily: 'Poppins'),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   // --- SUBMIT REPORT LOGIC ---
   Future<void> _submitReport() async {
     if (_selectedImage == null) {
@@ -237,12 +157,6 @@ class _CreateReportPageState extends State<CreateReportPage> {
       return;
     }
 
-    // --- Block submission if outside Valenzuela City ---
-    if (!_isInsideValenzuela(_latitude!, _longitude!)) {
-      await _showOutsideValenzuelaDialog();
-      return;
-    }
-
     setState(() => _isUploading = true);
 
     try {
@@ -255,9 +169,6 @@ class _CreateReportPageState extends State<CreateReportPage> {
       );
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Report submitted, pending admin review")),
-        );
         Navigator.pop(context, true);
       }
     } catch (e) {

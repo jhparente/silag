@@ -5,6 +5,43 @@ import 'package:silag/models/notification_model.dart';
 import 'package:silag/services/notification_service.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Categorization Helpers
+// ─────────────────────────────────────────────────────────────────────────────
+enum NotifCategory { all, sensor, floodReport, evacuation }
+
+NotifCategory _categorize(NotificationModel n) {
+  final text = '${n.title} ${n.body}'.toLowerCase();
+  if (text.contains('evacuation') || text.contains('rescue')) {
+    return NotifCategory.evacuation;
+  }
+  if (text.contains('flood report') || text.contains('report status')) {
+    return NotifCategory.floodReport;
+  }
+  // If it's a sensor reading, water level alert, etc.
+  if (text.contains('sensor') ||
+      text.contains('water level') ||
+      text.contains('alert') ||
+      text.contains('critical')) {
+    return NotifCategory.sensor;
+  }
+  // Default to sensor if it doesn't match evac/report (most system alerts are sensor-related)
+  return NotifCategory.sensor; 
+}
+
+enum SubFilter { all, unread, read, pending, approve, reject }
+
+SubFilter _getSubFilterStatus(NotificationModel n) {
+  final text = '${n.title} ${n.body}'.toLowerCase();
+  if (text.contains('accept') || text.contains('approv') || text.contains('success')) {
+    return SubFilter.approve;
+  }
+  if (text.contains('reject') || text.contains('declin')) {
+    return SubFilter.reject;
+  }
+  return SubFilter.pending; // Assume pending if no final status is mentioned
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Full-page Notifications Screen
 // ─────────────────────────────────────────────────────────────────────────────
 class NotificationsPage extends StatefulWidget {
@@ -21,35 +58,23 @@ class NotificationsPage extends StatefulWidget {
   State<NotificationsPage> createState() => _NotificationsPageState();
 }
 
-class _NotificationsPageState extends State<NotificationsPage>
-    with SingleTickerProviderStateMixin {
-  late TabController _tabController;
+class _NotificationsPageState extends State<NotificationsPage> {
   final _notifService = NotificationService();
-
   late List<NotificationModel> _notifications;
-
-  List<NotificationModel> get _unread =>
-      _notifications.where((n) => !n.isReadLocally).toList();
-  List<NotificationModel> get _read =>
-      _notifications.where((n) => n.isReadLocally).toList();
 
   @override
   void initState() {
     super.initState();
     _notifications = List.from(widget.notifications);
-    _tabController = TabController(length: 2, vsync: this);
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
   }
 
   Future<void> _markAllRead() async {
-    final unreadIds = _unread.map((n) => n.id).toList();
-    if (unreadIds.isEmpty) return;
+    final unread = _notifications.where((n) => !n.isReadLocally).toList();
+    if (unread.isEmpty) return;
+    
+    final unreadIds = unread.map((n) => n.id).toList();
     await _notifService.markAllAsRead(unreadIds);
+    
     setState(() {
       for (final n in _notifications) {
         n.isReadLocally = true;
@@ -59,7 +84,6 @@ class _NotificationsPageState extends State<NotificationsPage>
   }
 
   Future<void> _openDetail(NotificationModel notif) async {
-    // Mark individual notif as read
     if (!notif.isReadLocally) {
       await _notifService.markAsRead(notif.id);
       setState(() => notif.isReadLocally = true);
@@ -75,6 +99,274 @@ class _NotificationsPageState extends State<NotificationsPage>
     );
   }
 
+  @override
+  Widget build(BuildContext context) {
+    final unreadCount = _notifications.where((n) => !n.isReadLocally).length;
+
+    return DefaultTabController(
+      length: 4,
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF5F6FA),
+        appBar: AppBar(
+          backgroundColor: Colors.white,
+          foregroundColor: const Color(0xFF101C45),
+          elevation: 1,
+          title: const Text(
+            'Notifications',
+            style: TextStyle(
+              fontFamily: 'Poppins',
+              fontWeight: FontWeight.bold,
+              fontSize: 20,
+            ),
+          ),
+          actions: [
+            if (unreadCount > 0)
+              TextButton.icon(
+                onPressed: _markAllRead,
+                icon: const Icon(Icons.done_all_rounded, color: Color(0xFF101C45), size: 18),
+                label: const Text(
+                  'Mark all read',
+                  style: TextStyle(
+                    color: Color(0xFF101C45),
+                    fontFamily: 'Poppins',
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+          ],
+          bottom: TabBar(
+            isScrollable: true,
+            labelColor: const Color(0xFF101C45),
+            unselectedLabelColor: Colors.grey[600],
+            indicatorColor: const Color(0xFF101C45),
+            indicatorWeight: 3,
+            labelStyle: const TextStyle(
+              fontFamily: 'Poppins',
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+            ),
+            unselectedLabelStyle: const TextStyle(
+              fontFamily: 'Poppins',
+              fontWeight: FontWeight.w500,
+              fontSize: 14,
+            ),
+            tabs: [
+              _buildTab('All', _notifications.where((n) => !n.isReadLocally).length),
+              _buildTab('Sensor Readings', _notifications.where((n) => _categorize(n) == NotifCategory.sensor && !n.isReadLocally).length),
+              _buildTab('Flood Report', _notifications.where((n) => _categorize(n) == NotifCategory.floodReport && !n.isReadLocally).length),
+              _buildTab('Request Evacuation', _notifications.where((n) => _categorize(n) == NotifCategory.evacuation && !n.isReadLocally).length),
+            ],
+          ),
+        ),
+        body: TabBarView(
+          children: [
+            // All Tab (Filters: All, Unread, Read)
+            _CategoryTabView(
+              notifications: _notifications,
+              category: NotifCategory.all,
+              filterOptions: const [SubFilter.all, SubFilter.unread, SubFilter.read],
+              onTapNotif: _openDetail,
+            ),
+            // Sensor Readings Tab (Filters: All, Unread, Read)
+            _CategoryTabView(
+              notifications: _notifications.where((n) => _categorize(n) == NotifCategory.sensor).toList(),
+              category: NotifCategory.sensor,
+              filterOptions: const [SubFilter.all, SubFilter.unread, SubFilter.read],
+              onTapNotif: _openDetail,
+            ),
+            // Flood Report Tab (Filters: All, Pending, Approve, Reject)
+            _CategoryTabView(
+              notifications: _notifications.where((n) => _categorize(n) == NotifCategory.floodReport).toList(),
+              category: NotifCategory.floodReport,
+              filterOptions: const [SubFilter.all, SubFilter.pending, SubFilter.approve, SubFilter.reject],
+              onTapNotif: _openDetail,
+            ),
+            // Evacuation Tab (Filters: All, Pending, Approve, Reject)
+            _CategoryTabView(
+              notifications: _notifications.where((n) => _categorize(n) == NotifCategory.evacuation).toList(),
+              category: NotifCategory.evacuation,
+              filterOptions: const [SubFilter.all, SubFilter.pending, SubFilter.approve, SubFilter.reject],
+              onTapNotif: _openDetail,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTab(String label, int count) {
+    return Tab(
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(label),
+          if (count > 0) ...[
+            const SizedBox(width: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: const Color(0xFF101C45),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                count > 99 ? '99+' : '$count',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  fontFamily: 'Poppins',
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Category Tab View (Handles Sub-filters)
+// ─────────────────────────────────────────────────────────────────────────────
+class _CategoryTabView extends StatefulWidget {
+  final List<NotificationModel> notifications;
+  final NotifCategory category;
+  final List<SubFilter> filterOptions;
+  final Function(NotificationModel) onTapNotif;
+
+  const _CategoryTabView({
+    required this.notifications,
+    required this.category,
+    required this.filterOptions,
+    required this.onTapNotif,
+  });
+
+  @override
+  State<_CategoryTabView> createState() => _CategoryTabViewState();
+}
+
+class _CategoryTabViewState extends State<_CategoryTabView> {
+  SubFilter _selectedFilter = SubFilter.all;
+
+  List<NotificationModel> get _filteredNotifications {
+    return widget.notifications.where((n) {
+      if (_selectedFilter == SubFilter.all) return true;
+      
+      // Read/Unread filters
+      if (_selectedFilter == SubFilter.unread) return !n.isReadLocally;
+      if (_selectedFilter == SubFilter.read) return n.isReadLocally;
+
+      // Status filters
+      final status = _getSubFilterStatus(n);
+      return status == _selectedFilter;
+    }).toList();
+  }
+
+  String _filterName(SubFilter f) {
+    switch (f) {
+      case SubFilter.all: return 'All';
+      case SubFilter.unread: return 'Unread';
+      case SubFilter.read: return 'Read';
+      case SubFilter.pending: return 'Pending';
+      case SubFilter.approve: return 'Approved';
+      case SubFilter.reject: return 'Rejected';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final list = _filteredNotifications;
+    // Sort by newest first
+    list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+    return Column(
+      children: [
+        // Filter Chips Row
+        Container(
+          width: double.infinity,
+          color: Colors.transparent,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: widget.filterOptions.map((filter) {
+                final isSelected = _selectedFilter == filter;
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ChoiceChip(
+                    label: Text(_filterName(filter)),
+                    selected: isSelected,
+                    onSelected: (selected) {
+                      if (selected) {
+                        setState(() => _selectedFilter = filter);
+                      }
+                    },
+                    selectedColor: const Color(0xFFEBF0FE),
+                    backgroundColor: Colors.white,
+                    labelStyle: TextStyle(
+                      fontFamily: 'Poppins',
+                      fontSize: 12,
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                      color: isSelected ? const Color(0xFF101C45) : Colors.grey[700],
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                      side: BorderSide(
+                        color: isSelected ? const Color(0xFF101C45) : Colors.transparent,
+                        width: 1,
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+        ),
+        
+        // Notifications List
+        Expanded(
+          child: list.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.inbox_rounded, size: 60, color: Colors.grey[300]),
+                      const SizedBox(height: 16),
+                      Text(
+                        'No notifications found.',
+                        style: TextStyle(
+                          fontFamily: 'Poppins',
+                          fontSize: 14,
+                          color: Colors.grey[400],
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                  itemCount: list.length,
+                  itemBuilder: (_, i) => _NotificationCard(
+                    notif: list[i],
+                    onTap: () => widget.onTapNotif(list[i]),
+                  ),
+                ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Notification Card UI
+// ─────────────────────────────────────────────────────────────────────────────
+class _NotificationCard extends StatelessWidget {
+  final NotificationModel notif;
+  final VoidCallback onTap;
+
+  const _NotificationCard({required this.notif, required this.onTap});
+
   String _formatTime(DateTime dt) {
     final local = dt.toLocal();
     final now = DateTime.now();
@@ -86,147 +378,32 @@ class _NotificationsPageState extends State<NotificationsPage>
     return DateFormat('MMM d, y').format(local);
   }
 
+  IconData _getIcon() {
+    final cat = _categorize(notif);
+    if (cat == NotifCategory.sensor) return Icons.sensors_rounded;
+    if (cat == NotifCategory.floodReport) return Icons.report_problem_rounded;
+    if (cat == NotifCategory.evacuation) return Icons.directions_run_rounded;
+    return Icons.campaign_rounded;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final unreadCount = _unread.length;
-
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F6FA),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF101C45),
-        foregroundColor: Colors.white,
-        elevation: 0,
-        title: const Text(
-          'Notifications',
-          style: TextStyle(
-            fontFamily: 'Poppins',
-            fontWeight: FontWeight.bold,
-            fontSize: 18,
-          ),
-        ),
-        actions: [
-          if (unreadCount > 0)
-            TextButton.icon(
-              onPressed: _markAllRead,
-              icon: const Icon(Icons.done_all_rounded, color: Colors.white70, size: 18),
-              label: const Text(
-                'Mark all read',
-                style: TextStyle(
-                  color: Colors.white70,
-                  fontFamily: 'Poppins',
-                  fontSize: 12,
-                ),
-              ),
-            ),
-        ],
-        bottom: TabBar(
-          controller: _tabController,
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.white54,
-          indicatorColor: Colors.white,
-          indicatorWeight: 3,
-          labelStyle: const TextStyle(
-            fontFamily: 'Poppins',
-            fontWeight: FontWeight.w600,
-            fontSize: 13,
-          ),
-          unselectedLabelStyle: const TextStyle(
-            fontFamily: 'Poppins',
-            fontSize: 13,
-          ),
-          tabs: [
-            Tab(
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Text('Unread'),
-                  if (unreadCount > 0) ...[
-                    const SizedBox(width: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: Colors.redAccent,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text(
-                        unreadCount > 99 ? '99+' : '$unreadCount',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                          fontFamily: 'Poppins',
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            const Tab(text: 'Read'),
-          ],
-        ),
-      ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          _buildList(_unread, emptyMessage: 'No unread notifications'),
-          _buildList(_read, emptyMessage: 'No read notifications yet'),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildList(List<NotificationModel> items, {required String emptyMessage}) {
-    if (items.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.notifications_off_outlined,
-              size: 60,
-              color: Colors.grey[300],
-            ),
-            const SizedBox(height: 16),
-            Text(
-              emptyMessage,
-              style: TextStyle(
-                fontFamily: 'Poppins',
-                fontSize: 14,
-                color: Colors.grey[400],
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-      itemCount: items.length,
-      itemBuilder: (_, i) => _buildNotifCard(items[i]),
-    );
-  }
-
-  Widget _buildNotifCard(NotificationModel notif) {
     final isUnread = !notif.isReadLocally;
 
     return GestureDetector(
-      onTap: () => _openDetail(notif),
+      onTap: onTap,
       child: Container(
         margin: const EdgeInsets.only(bottom: 10),
         decoration: BoxDecoration(
           color: isUnread ? Colors.white : const Color(0xFFF9F9F9),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: isUnread
-                ? const Color(0xFF101C45).withOpacity(0.15)
-                : Colors.transparent,
+            color: isUnread ? const Color(0xFF101C45).withOpacity(0.3) : Colors.transparent,
           ),
           boxShadow: isUnread
               ? [
                   BoxShadow(
-                    color: const Color(0xFF101C45).withOpacity(0.07),
+                    color: const Color(0xFF101C45).withOpacity(0.05),
                     blurRadius: 10,
                     offset: const Offset(0, 4),
                   ),
@@ -249,13 +426,11 @@ class _NotificationsPageState extends State<NotificationsPage>
                 width: 44,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: isUnread
-                      ? const Color(0xFF101C45).withOpacity(0.1)
-                      : Colors.grey[100],
+                  color: isUnread ? const Color(0xFFEBF0FE) : Colors.grey[100],
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
-                  Icons.campaign_rounded,
+                  _getIcon(),
                   color: isUnread ? const Color(0xFF101C45) : Colors.grey[400],
                   size: 22,
                 ),
@@ -305,20 +480,10 @@ class _NotificationsPageState extends State<NotificationsPage>
                     const SizedBox(height: 6),
                     Row(
                       children: [
-                        Icon(Icons.access_time_rounded,
-                            size: 11, color: Colors.grey[400]),
+                        Icon(Icons.access_time_rounded, size: 11, color: Colors.grey[400]),
                         const SizedBox(width: 3),
                         Text(
                           _formatTime(notif.createdAt),
-                          style: TextStyle(
-                            fontFamily: 'Poppins',
-                            fontSize: 11,
-                            color: Colors.grey[400],
-                          ),
-                        ),
-                        const Spacer(),
-                        Text(
-                          'Tap to view →',
                           style: TextStyle(
                             fontFamily: 'Poppins',
                             fontSize: 11,

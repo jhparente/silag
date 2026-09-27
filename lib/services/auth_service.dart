@@ -122,6 +122,7 @@ class AuthService {
     required String username,
     required String mobileNumber,
     required String password,
+    required String phoneVerificationToken,
     double? latitude,
     double? longitude,
   }) async {
@@ -130,6 +131,7 @@ class AuthService {
         'username': username,
         'mobile_number': mobileNumber,
         'password_hash': password,
+        'phone_verification_token': phoneVerificationToken,
       };
 
       if (latitude != null && longitude != null) {
@@ -187,6 +189,83 @@ class AuthService {
       }
       // Re-throw as-is so callers can inspect the actual message
       rethrow;
+    }
+  }
+
+  /// Step 1 of signup: Request OTP SMS to the given mobile number.
+  /// Returns the response map (includes debug_code in staging).
+  Future<Map<String, dynamic>> requestRegistrationOtp({
+    required String mobileNumber,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            _buildUri('auth/request-phone-otp'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: jsonEncode({'mobile_number': mobileNumber}),
+          )
+          .timeout(const Duration(seconds: 20));
+
+      final Map<String, dynamic> body = jsonDecode(response.body);
+      if (response.statusCode == 200) {
+        return body;
+      }
+      final msg = (body['detail'] ?? body['message'] ?? 'Failed to send OTP').toString();
+      throw Exception(msg);
+    } catch (e) {
+      if (e is TimeoutException) {
+        throw Exception('Request timed out. Please check your connection.');
+      }
+      final s = e.toString();
+      if (s.contains('ClientException') || s.contains('SocketException') ||
+          s.contains('Connection refused') || s.contains('Network is unreachable')) {
+        throw Exception('Network error. Please check your connection.');
+      }
+      throw Exception(s.replaceAll('Exception: ', ''));
+    }
+  }
+
+  /// Step 2 of signup: Submit OTP code and get back a verification_token.
+  Future<String> verifyRegistrationOtp({
+    required String mobileNumber,
+    required String otpCode,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            _buildUri('auth/verify-phone-otp'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: jsonEncode({
+              'mobile_number': mobileNumber,
+              'otp_code': otpCode,
+            }),
+          )
+          .timeout(const Duration(seconds: 20));
+
+      final Map<String, dynamic> body = jsonDecode(response.body);
+      if (response.statusCode == 200) {
+        final token = body['verification_token'] as String?;
+        if (token == null) throw Exception('No verification token returned.');
+        return token;
+      }
+      final msg = (body['detail'] ?? body['message'] ?? 'Verification failed').toString();
+      throw Exception(msg);
+    } catch (e) {
+      if (e is TimeoutException) {
+        throw Exception('Request timed out. Please check your connection.');
+      }
+      final s = e.toString();
+      if (s.contains('ClientException') || s.contains('SocketException') ||
+          s.contains('Connection refused') || s.contains('Network is unreachable')) {
+        throw Exception('Network error. Please check your connection.');
+      }
+      throw Exception(s.replaceAll('Exception: ', ''));
     }
   }
 

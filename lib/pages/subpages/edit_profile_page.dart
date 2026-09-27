@@ -1,3 +1,4 @@
+// ignore_for_file: deprecated_member_use
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -373,10 +374,111 @@ class _EditProfilePageState extends State<EditProfilePage> {
                           ),
                         ),
                       ],
-                    ),
+                      ),
                   ),
 
-                  const SizedBox(height: 40),
+                  const SizedBox(height: 14),
+
+                  // --- SMS PREVIEW CARD ---
+                  if (_currentSliderValue > 0)
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF0F4FF),
+                        border: Border.all(color: const Color(0xFF101C45).withOpacity(0.2)),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.sms_outlined, size: 16, color: Color(0xFF101C45)),
+                              const SizedBox(width: 6),
+                              const Text(
+                                'SMS Preview',
+                                style: TextStyle(
+                                  fontFamily: 'Poppins',
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 12,
+                                  color: Color(0xFF101C45),
+                                ),
+                              ),
+                              const Spacer(),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF101C45),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: const Text(
+                                  'SILAG',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                    fontFamily: 'Poppins',
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          const Divider(height: 1, color: Color(0xFFDDE4FF)),
+                          const SizedBox(height: 10),
+                          Text(
+                            'SILAG FLOOD ALERT\n'
+                            'Water level at [your area] is now X.X ft, reaching your personal alert threshold of $_currentSliderValue ft.\n'
+                            'Please take necessary precautions and monitor updates closely. Move valuables to higher ground if needed.\n'
+                            'Stay safe. -SILAG Flood Monitoring System',
+                            style: TextStyle(
+                              fontFamily: 'Poppins',
+                              fontSize: 12,
+                              color: Colors.grey[700],
+                              height: 1.5,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'You will receive this SMS when water reaches $_currentSliderValue ft.',
+                            style: const TextStyle(
+                              fontFamily: 'Poppins',
+                              fontSize: 11,
+                              color: Color(0xFF101C45),
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  else
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.amber[50],
+                        border: Border.all(color: Colors.amber.shade200),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.info_outline, size: 16, color: Colors.amber[800]),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Set a threshold above 0 ft to receive SMS flood alerts.',
+                              style: TextStyle(
+                                fontFamily: 'Poppins',
+                                fontSize: 12,
+                                color: Colors.amber[800],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+
+                  const SizedBox(height: 24),
 
                   // --- 5. SAVE BUTTON ---
                   ElevatedButton(
