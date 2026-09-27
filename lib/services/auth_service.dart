@@ -5,6 +5,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:silag/models/user_model.dart';
 import 'api_config.dart';
 import 'ban_check_service.dart';
+import 'notification_service.dart';
 import 'push_token_service.dart';
 
 class AuthService {
@@ -69,6 +70,9 @@ class AuthService {
         // Store a normalized token and user_id securely.
         await _storage.write(key: 'jwt_token', value: normalizedToken);
         await _storage.write(key: 'user_id', value: _extractUserId(userData));
+
+        // Record notification cutoff so only post-login notifications show.
+        await NotificationService().recordLoginCutoff();
 
         await PushTokenService().registerTokenIfLoggedIn();
 
@@ -153,6 +157,9 @@ class AuthService {
 
         await _storage.write(key: 'jwt_token', value: normalizedToken);
         await _storage.write(key: 'user_id', value: _extractUserId(userData));
+
+        // Record notification cutoff so only post-registration notifications show.
+        await NotificationService().recordLoginCutoff();
 
         await PushTokenService().registerTokenIfLoggedIn();
 
@@ -277,6 +284,8 @@ class AuthService {
   Future<void> logout() async {
     // Stop the background polling before clearing credentials.
     BanCheckService().stop();
+    // Clear notification read-state and cutoff so a fresh install/login starts clean.
+    await NotificationService().clearOnLogout();
     await _storage.delete(key: 'jwt_token');
     await _storage.delete(key: 'user_id');
   }
