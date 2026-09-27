@@ -2,7 +2,7 @@ class ApiConfig {
   ApiConfig._();
 
   // Production (Railway) URL:
-  // https://silag-backend-production-aba7.up.railway.app
+  // https://silag-backend-2-production.up.railway.app
   //
   // Local backend URL for development (uvicorn running on localhost):
   // Use 'http://127.0.0.1:8000' for Windows/iOS/Web/physical phone (with adb reverse).
@@ -11,8 +11,7 @@ class ApiConfig {
   // Override at build time: --dart-define=API_HOST=https://...your-production-url...
   static const String host = String.fromEnvironment(
     'API_HOST',
-    // defaultValue: 'https://silag-backend-production-aba7.up.railway.app',
-    defaultValue: 'http://127.0.0.1:8000',
+    defaultValue: 'https://silag-backend-2-production.up.railway.app',
   );
 
   // Override with: --dart-define=API_DEFAULT_VERSION=v2
