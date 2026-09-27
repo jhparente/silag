@@ -34,8 +34,24 @@ class NotificationService {
     final jwt = await _getJwt();
     if (jwt == null || jwt.isEmpty) return [];
 
-    final readIds = await _getReadIds();
     final cutoff = await _getCutoff();
+
+    // Fetch cloud read IDs and sync locally
+    try {
+      final readRes = await http.get(
+        ApiConfig.uri('notifications/mobile/read-ids'),
+        headers: {
+          'Authorization': 'Bearer $jwt',
+          'Accept': 'application/json',
+        },
+      ).timeout(const Duration(seconds: 5));
+      if (readRes.statusCode == 200) {
+        final serverReadIds = (jsonDecode(readRes.body)['data'] as List).cast<int>();
+        await markAllAsRead(serverReadIds, syncToCloud: false);
+      }
+    } catch (_) {}
+
+    final readIds = await _getReadIds();
 
     final response = await http.get(
       ApiConfig.uri('notifications/mobile', queryParameters: {'limit': '50'}),
@@ -89,11 +105,33 @@ class NotificationService {
     final ids = await _getReadIds();
     ids.add(notificationId);
     await _storage.write(key: _readIdsKey, value: ids.join(','));
+    _syncReadIdsToCloud([notificationId]);
   }
 
-  Future<void> markAllAsRead(List<int> ids) async {
+  Future<void> markAllAsRead(List<int> ids, {bool syncToCloud = true}) async {
+    if (ids.isEmpty) return;
     final existing = await _getReadIds();
     existing.addAll(ids);
     await _storage.write(key: _readIdsKey, value: existing.join(','));
+    if (syncToCloud) {
+      _syncReadIdsToCloud(ids);
+    }
+  }
+
+  Future<void> _syncReadIdsToCloud(List<int> ids) async {
+    if (ids.isEmpty) return;
+    try {
+      final jwt = await _getJwt();
+      if (jwt == null) return;
+      await http.post(
+        ApiConfig.uri('notifications/mobile/read-bulk'),
+        headers: {
+          'Authorization': 'Bearer $jwt',
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: jsonEncode({'notification_ids': ids}),
+      ).timeout(const Duration(seconds: 5));
+    } catch (_) {}
   }
 }

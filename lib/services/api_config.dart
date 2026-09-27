@@ -12,6 +12,7 @@ class ApiConfig {
   static const String host = String.fromEnvironment(
     'API_HOST',
     defaultValue: 'https://silag-backend-2-production.up.railway.app',
+    // defaultValue: 'http://127.0.0.1:8000',
   );
 
   // Override with: --dart-define=API_DEFAULT_VERSION=v2
