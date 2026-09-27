@@ -308,6 +308,45 @@ class AuthService {
     }
   }
 
+  Future<void> checkPasswordResetOtp({
+    required String mobileNumber,
+    required String otpCode,
+  }) async {
+    try {
+      final response = await http.post(
+        _buildUri('forgot_password/check_otp'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: jsonEncode({
+          'mobile_number': mobileNumber,
+          'otp_code': otpCode,
+        }),
+      );
+
+      final Map<String, dynamic> responseBody = jsonDecode(response.body);
+      if (response.statusCode != 200 || responseBody['status'] != 'success') {
+        final message =
+            (responseBody['message'] ??
+                    responseBody['detail'] ??
+                    'Invalid OTP')
+                .toString();
+        throw Exception(message);
+      }
+    } catch (e) {
+      final errStr = e.toString();
+      if (errStr.contains('ClientException') ||
+          errStr.contains('SocketException') ||
+          errStr.contains('Failed to fetch') ||
+          errStr.contains('Connection refused') ||
+          errStr.contains('Network is unreachable')) {
+        throw Exception('Network error occurred. Please try again later.');
+      }
+      throw Exception(errStr.replaceAll('Exception: ', ''));
+    }
+  }
+
   Future<void> resetPasswordWithOtp({
     required String mobileNumber,
     required String otpCode,

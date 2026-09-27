@@ -14,6 +14,8 @@ import 'package:silag/services/sensor_service.dart';
 import 'package:silag/services/weather_service.dart';
 import 'package:silag/models/weather_model.dart';
 import 'package:silag/models/sensor_model.dart';
+import 'package:silag/models/hydrograph_model.dart';
+import 'package:silag/widgets/flood_forecast_chart.dart';
 import 'package:silag/widgets/skeleton_loader.dart';
 import 'dart:math' as math;
 
@@ -31,6 +33,7 @@ class _HomePageState extends State<HomePage> {
 
   late Future<WeatherModel> _weatherFuture;
   late Future<List<SensorModel>> _sensorsFuture;
+  late Future<HydrographModel> _hydrographFuture;
   List<NotificationModel> _notifications = [];
   int get _unreadCount => _notifications.where((n) => !n.isReadLocally).length;
 
@@ -45,6 +48,7 @@ class _HomePageState extends State<HomePage> {
     super.initState();
     _weatherFuture = _weatherService.fetchWeather();
     _sensorsFuture = _sensorService.fetchSensors();
+    _hydrographFuture = _sensorService.fetchGlobalHydrograph();
     _startAutoRefresh();
     _loadNotifications();
     _loadBarangay();
@@ -99,6 +103,7 @@ class _HomePageState extends State<HomePage> {
       if (mounted) {
         setState(() {
           _sensorsFuture = _sensorService.fetchSensors();
+          _hydrographFuture = _sensorService.fetchGlobalHydrograph();
         });
       }
     });
@@ -115,8 +120,9 @@ class _HomePageState extends State<HomePage> {
       // Force a fresh fetch from the network on pull-to-refresh
       _weatherFuture = _weatherService.fetchWeather(forceRefresh: true);
       _sensorsFuture = _sensorService.fetchSensors();
+      _hydrographFuture = _sensorService.fetchGlobalHydrograph();
     });
-    await Future.wait([_weatherFuture, _sensorsFuture]);
+    await Future.wait([_weatherFuture, _sensorsFuture, _hydrographFuture]);
   }
 
   @override
@@ -131,7 +137,7 @@ class _HomePageState extends State<HomePage> {
         onRefresh: _refreshData,
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(context).padding.bottom + 100),
+          padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(context).padding.bottom + 40),
           child: Column(
             children: [
               // --- WEATHER SECTION ---
@@ -189,6 +195,40 @@ class _HomePageState extends State<HomePage> {
                         .map((sensor) => _buildSensorCard(sensor))
                         .toList(),
                   );
+                },
+              ),
+
+              const SizedBox(height: 40),
+
+              // --- FLOOD FORECAST SECTION ---
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  "Graphical Flood Forecast",
+                  style: TextStyle(
+                    fontFamily: 'Poppins',
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF101C45),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 5),
+
+              FutureBuilder<HydrographModel>(
+                future: _hydrographFuture,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const SizedBox(
+                      height: 250,
+                      child: Center(child: CircularProgressIndicator()),
+                    );
+                  }
+                  if (snapshot.hasError || !snapshot.hasData) {
+                    return const SizedBox.shrink();
+                  }
+
+                  return FloodForecastChart(hydrograph: snapshot.data!);
                 },
               ),
             ],

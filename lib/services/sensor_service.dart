@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 import 'package:silag/models/sensor_model.dart';
+import 'package:silag/models/hydrograph_model.dart';
 import 'package:silag/services/api_config.dart';
 
 class SensorService {
@@ -145,5 +146,26 @@ class SensorService {
     }
 
     return latest;
+  }
+
+  Future<HydrographModel> fetchGlobalHydrograph() async {
+    try {
+      final response = await http
+          .get(_buildUri('sensor_hydrograph', version: 'v1'))
+          .timeout(const Duration(seconds: 15));
+
+      if (response.statusCode != 200) {
+        throw Exception('Failed to load hydrograph');
+      }
+
+      final decoded = jsonDecode(response.body);
+      if (decoded['status'] != 'success') {
+        throw Exception('Backend returned non-success for hydrograph');
+      }
+
+      return HydrographModel.fromJson(decoded['data'] as Map<String, dynamic>);
+    } catch (e) {
+      throw Exception('Failed to load hydrograph data');
+    }
   }
 }

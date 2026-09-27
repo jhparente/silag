@@ -21,11 +21,15 @@ class _ForgotPasswordState extends State<ForgotPassword> {
   final _confirmPasswordController = TextEditingController();
 
   bool _otpSent = false;
+  bool _otpConfirmed = false;
   bool _isSending = false;
+  bool _isConfirming = false;
   bool _isResetting = false;
   bool _obscureNewPassword = true;
   bool _obscureConfirmPassword = true;
   StreamSubscription<RemoteMessage>? _messageSub;
+  Timer? _resendTimer;
+  int _cooldown = 0;
 
   @override
   void initState() {
@@ -41,20 +45,40 @@ class _ForgotPasswordState extends State<ForgotPassword> {
           data['body']?.toString() ??
           'Notification received.';
 
-      if (type == 'password_reset_otp') {
-        LocalNotificationService().showOtpNotification(
-          title: title,
-          body: body,
-        );
-        _showMessage('OTP sent via notification.');
-        return;
-      }
-
       if (title.isNotEmpty) {
         _showMessage('$title\n$body');
       } else {
         _showMessage(body);
       }
+    });
+  }
+
+  @override
+  void dispose() {
+    _messageSub?.cancel();
+    _resendTimer?.cancel();
+    _mobileController.dispose();
+    _otpController.dispose();
+    _newPasswordController.dispose();
+    _confirmPasswordController.dispose();
+    super.dispose();
+  }
+
+  void _startTimer() {
+    _resendTimer?.cancel();
+    setState(() => _cooldown = 60);
+    _resendTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      setState(() {
+        if (_cooldown > 0) {
+          _cooldown--;
+        } else {
+          timer.cancel();
+        }
+      });
     });
   }
 
@@ -118,12 +142,42 @@ class _ForgotPasswordState extends State<ForgotPassword> {
 
       if (!mounted) return;
       setState(() => _otpSent = true);
-      _showMessage('OTP sent. Check your notifications.');
+      _startTimer();
+      _showMessage('OTP sent. Check your SMS messages.');
     } catch (e) {
       _showMessage(e.toString().replaceAll('Exception: ', ''), isError: true);
     } finally {
       if (mounted) {
         setState(() => _isSending = false);
+      }
+    }
+  }
+
+  Future<void> _verifyOtp() async {
+    final mobileDigits = _mobileController.text.trim();
+    final otpCode = _otpController.text.trim();
+
+    if (otpCode.isEmpty) {
+      _showMessage('Please enter the OTP code.', isError: true);
+      return;
+    }
+
+    setState(() => _isConfirming = true);
+
+    try {
+      await _authService.checkPasswordResetOtp(
+        mobileNumber: '+63$mobileDigits',
+        otpCode: otpCode,
+      );
+
+      if (!mounted) return;
+      setState(() => _otpConfirmed = true);
+      _showMessage('OTP verified. You can now set your new password.');
+    } catch (e) {
+      _showMessage(e.toString().replaceAll('Exception: ', ''), isError: true);
+    } finally {
+      if (mounted) {
+        setState(() => _isConfirming = false);
       }
     }
   }
@@ -134,7 +188,7 @@ class _ForgotPasswordState extends State<ForgotPassword> {
     final newPassword = _newPasswordController.text.trim();
     final confirmPassword = _confirmPasswordController.text.trim();
 
-    if (otpCode.isEmpty || newPassword.isEmpty || confirmPassword.isEmpty) {
+    if (newPassword.isEmpty || confirmPassword.isEmpty) {
       _showMessage('Please complete all fields.', isError: true);
       return;
     }
@@ -202,7 +256,7 @@ class _ForgotPasswordState extends State<ForgotPassword> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'We will send a one-time code via notification.',
+                  'We will send a one-time code via SMS.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 14,
@@ -270,20 +324,54 @@ class _ForgotPasswordState extends State<ForgotPassword> {
                     ),
                   ),
                 ] else ...[
-                  _buildLabel('OTP Code'),
-                  TextField(
-                    controller: _otpController,
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [
-                      FilteringTextInputFormatter.digitsOnly,
-                      LengthLimitingTextInputFormatter(6),
-                    ],
-                    decoration: _inputDecoration(
-                      hint: 'Enter the 6-digit code',
-                      prefixIcon: Icons.shield,
+                  if (!_otpConfirmed) ...[
+                    _buildLabel('OTP Code'),
+                    TextField(
+                      controller: _otpController,
+                      keyboardType: TextInputType.number,
+                      enabled: !_otpConfirmed,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                        LengthLimitingTextInputFormatter(6),
+                      ],
+                      decoration: _inputDecoration(
+                        hint: 'Enter the 6-digit code',
+                        prefixIcon: Icons.shield,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 20),
+                    const SizedBox(height: 20),
+                    SizedBox(
+                      height: 55,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF101C45),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          elevation: 2,
+                        ),
+                        onPressed: _isConfirming ? null : _verifyOtp,
+                        child: _isConfirming
+                            ? const SizedBox(
+                                height: 24,
+                                width: 24,
+                                child: CircularProgressIndicator(
+                                  color: Colors.white,
+                                  strokeWidth: 2.5,
+                                ),
+                              )
+                            : const Text(
+                                'Confirm OTP',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  fontFamily: 'Poppins',
+                                ),
+                              ),
+                      ),
+                    ),
+                  ] else ...[
 
                   _buildLabel('New Password'),
                   TextField(
@@ -371,13 +459,16 @@ class _ForgotPasswordState extends State<ForgotPassword> {
                     ),
                   ),
                   const SizedBox(height: 8),
+                  ], // Close if (!_otpConfirmed) else block
 
                   TextButton(
-                    onPressed: _isSending ? null : _sendOtp,
-                    child: const Text(
-                      'Resend OTP',
+                    onPressed: (_isSending || _cooldown > 0) ? null : _sendOtp,
+                    child: Text(
+                      _cooldown > 0 ? 'Resend OTP in ${_cooldown}s' : 'Resend OTP',
                       style: TextStyle(
-                        color: Color(0xFF101C45),
+                        color: (_isSending || _cooldown > 0)
+                            ? Colors.grey
+                            : const Color(0xFF101C45),
                         fontWeight: FontWeight.bold,
                         fontFamily: 'Poppins',
                         fontSize: 13,
@@ -388,6 +479,9 @@ class _ForgotPasswordState extends State<ForgotPassword> {
                     onPressed: () {
                       setState(() {
                         _otpSent = false;
+                        _otpConfirmed = false;
+                        _resendTimer?.cancel();
+                        _cooldown = 0;
                         _otpController.clear();
                         _newPasswordController.clear();
                         _confirmPasswordController.clear();
@@ -453,13 +547,5 @@ class _ForgotPasswordState extends State<ForgotPassword> {
     );
   }
 
-  @override
-  void dispose() {
-    _messageSub?.cancel();
-    _mobileController.dispose();
-    _otpController.dispose();
-    _newPasswordController.dispose();
-    _confirmPasswordController.dispose();
-    super.dispose();
-  }
+
 }

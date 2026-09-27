@@ -432,7 +432,7 @@ class _SafetyPageState extends State<SafetyPage> {
         },
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: EdgeInsets.fromLTRB(20, 10, 20, MediaQuery.of(context).padding.bottom + 100),
+          padding: EdgeInsets.fromLTRB(20, 10, 20, MediaQuery.of(context).padding.bottom + 40),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
           children: [
