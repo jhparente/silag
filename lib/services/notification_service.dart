@@ -57,7 +57,17 @@ class NotificationService {
           return n;
         })
         // Only show notifications created AFTER the login cutoff.
-        .where((n) => cutoff == null || n.createdAt.isAfter(cutoff))
+        // Exception: Evacuation and Flood Report notifications are persisted.
+        .where((n) {
+          final text = '${n.title} ${n.body}'.toLowerCase();
+          final isEvac = text.contains('evacuation') || text.contains('rescue');
+          final isReport = text.contains('flood report') || text.contains('report status');
+          
+          if (isEvac || isReport) {
+            return true;
+          }
+          return cutoff == null || n.createdAt.isAfter(cutoff);
+        })
         .toList();
   }
 

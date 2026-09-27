@@ -271,7 +271,6 @@ class AuthService {
 
   Future<void> requestPasswordResetOtp({
     required String mobileNumber,
-    required String deviceToken,
   }) async {
     try {
       final response = await http.post(
@@ -282,7 +281,6 @@ class AuthService {
         },
         body: jsonEncode({
           'mobile_number': mobileNumber,
-          'device_token': deviceToken,
         }),
       );
 

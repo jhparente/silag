@@ -137,6 +137,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
           ],
           bottom: TabBar(
             isScrollable: true,
+            tabAlignment: TabAlignment.start,
             labelColor: const Color(0xFF101C45),
             unselectedLabelColor: Colors.grey[600],
             indicatorColor: const Color(0xFF101C45),
@@ -263,6 +264,16 @@ class _CategoryTabViewState extends State<_CategoryTabView> {
     }).toList();
   }
 
+  String _getTimeCategory(DateTime date) {
+    final now = DateTime.now();
+    final difference = now.difference(date).inDays;
+    if (difference <= 7) return 'This Week';
+    if (difference <= 14) return '1 week ago';
+    if (difference <= 21) return '2 weeks ago';
+    if (difference <= 28) return '3 weeks ago';
+    return 'Previous Months';
+  }
+
   String _filterName(SubFilter f) {
     switch (f) {
       case SubFilter.all: return 'All';
@@ -344,13 +355,50 @@ class _CategoryTabViewState extends State<_CategoryTabView> {
                     ],
                   ),
                 )
-              : ListView.builder(
-                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                  itemCount: list.length,
-                  itemBuilder: (_, i) => _NotificationCard(
-                    notif: list[i],
-                    onTap: () => widget.onTapNotif(list[i]),
-                  ),
+              : Builder(
+                  builder: (context) {
+                    final groupedWidgets = <Widget>[];
+                    String? currentCategory;
+                    for (final notif in list) {
+                      final category = _getTimeCategory(notif.createdAt);
+                      if (category != currentCategory) {
+                        currentCategory = category;
+                        groupedWidgets.add(
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 8.0),
+                            child: Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(vertical: 6.0),
+                              decoration: BoxDecoration(
+                                color: Colors.grey[100],
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                category,
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontFamily: 'Poppins',
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.grey[600],
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      }
+                      groupedWidgets.add(_NotificationCard(
+                        notif: notif,
+                        onTap: () => widget.onTapNotif(notif),
+                      ));
+                    }
+                    
+                    return ListView.builder(
+                      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                      itemCount: groupedWidgets.length,
+                      itemBuilder: (_, i) => groupedWidgets[i],
+                    );
+                  },
                 ),
         ),
       ],

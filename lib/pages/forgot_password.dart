@@ -101,11 +101,7 @@ class _ForgotPasswordState extends State<ForgotPassword> {
     );
   }
 
-  Future<String?> _getDeviceToken() async {
-    final token = await FirebaseMessaging.instance.getToken();
-    if (token == null || token.isEmpty) return null;
-    return token;
-  }
+
 
   Future<void> _sendOtp() async {
     final mobileDigits = _mobileController.text.trim();
@@ -126,18 +122,8 @@ class _ForgotPasswordState extends State<ForgotPassword> {
     setState(() => _isSending = true);
 
     try {
-      final token = await _getDeviceToken();
-      if (token == null) {
-        _showMessage(
-          'Unable to get notification token. Enable notifications and try again.',
-          isError: true,
-        );
-        return;
-      }
-
       await _authService.requestPasswordResetOtp(
         mobileNumber: '+63$mobileDigits',
-        deviceToken: token,
       );
 
       if (!mounted) return;
