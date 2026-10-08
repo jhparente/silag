@@ -3,10 +3,16 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
 import 'package:silag/models/notification_model.dart';
 import 'package:silag/pages/profile_page.dart';
 import 'package:silag/pages/subpages/notifications_page.dart';
+import 'package:silag/pages/subpages/all_sensors_page.dart';
+import 'package:silag/pages/report.dart';
+import 'package:silag/pages/subpages/create_report.dart';
+import 'package:silag/pages/safety.dart';
+import 'package:silag/services/evacuation_request_service.dart';
 import 'package:silag/services/api_config.dart';
 import 'package:silag/services/api_client.dart';
 import 'package:silag/services/notification_service.dart';
@@ -18,6 +24,8 @@ import 'package:silag/models/hydrograph_model.dart';
 import 'package:silag/widgets/flood_forecast_chart.dart';
 import 'package:silag/widgets/skeleton_loader.dart';
 import 'dart:math' as math;
+
+enum _SensorFilterMode { closest, barangay }
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -35,10 +43,18 @@ class _HomePageState extends State<HomePage> {
   late Future<List<SensorModel>> _sensorsFuture;
   late Future<HydrographModel> _hydrographFuture;
   List<NotificationModel> _notifications = [];
+  List<SensorModel> _cachedSensors = [];
   int get _unreadCount => _notifications.where((n) => !n.isReadLocally).length;
 
-  /// Barangay name fetched from the logged-in user's profile.
+  /// Barangay info from the logged-in user's profile.
   String? _barangayName;
+  String? _barangayId;
+
+  /// Sensor filter selection
+  _SensorFilterMode _sensorFilter = _SensorFilterMode.closest;
+  bool _isFetchingLocation = false;
+  double? _userLat;
+  double? _userLng;
 
   /// Auto-refresh interval — sensors reload every 30 seconds automatically.
   Timer? _refreshTimer;
@@ -47,11 +63,45 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     _weatherFuture = _weatherService.fetchWeather();
-    _sensorsFuture = _sensorService.fetchSensors();
+    _sensorsFuture = _sensorService.fetchSensors().then((s) {
+      _cachedSensors = s;
+      return s;
+    });
     _hydrographFuture = _sensorService.fetchGlobalHydrograph();
     _startAutoRefresh();
     _loadNotifications();
     _loadBarangay();
+    _ensureUserLocation(request: false);
+  }
+
+  Future<void> _ensureUserLocation({bool request = false}) async {
+    if (_userLat != null && _userLng != null) return;
+    if (_isFetchingLocation) return;
+    setState(() => _isFetchingLocation = true);
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) return;
+      LocationPermission perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) {
+        if (!request) return; // Don't prompt immediately on app launch
+        perm = await Geolocator.requestPermission();
+      }
+      if (perm == LocationPermission.denied ||
+          perm == LocationPermission.deniedForever) return;
+      final pos = await Geolocator.getCurrentPosition(
+        locationSettings:
+            const LocationSettings(accuracy: LocationAccuracy.high),
+      );
+      if (mounted) {
+        setState(() {
+          _userLat = pos.latitude;
+          _userLng = pos.longitude;
+        });
+      }
+    } catch (_) {
+    } finally {
+      if (mounted) setState(() => _isFetchingLocation = false);
+    }
   }
 
   Future<void> _loadNotifications() async {
@@ -87,8 +137,13 @@ class _HomePageState extends State<HomePage> {
           // Fallback: just show the barangay_id if the join is absent
           name ??= data['barangay_id']?.toString();
 
-          if (mounted && name != null) {
-            setState(() => _barangayName = 'Brgy. $name');
+          final barangayId = data['barangay_id']?.toString();
+
+          if (mounted) {
+            setState(() {
+              if (name != null) _barangayName = 'Brgy. $name';
+              if (barangayId != null) _barangayId = barangayId;
+            });
           }
         }
       }
@@ -102,7 +157,10 @@ class _HomePageState extends State<HomePage> {
     _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) {
         setState(() {
-          _sensorsFuture = _sensorService.fetchSensors();
+          _sensorsFuture = _sensorService.fetchSensors().then((s) {
+            _cachedSensors = s;
+            return s;
+          });
           _hydrographFuture = _sensorService.fetchGlobalHydrograph();
         });
       }
@@ -119,10 +177,21 @@ class _HomePageState extends State<HomePage> {
     setState(() {
       // Force a fresh fetch from the network on pull-to-refresh
       _weatherFuture = _weatherService.fetchWeather(forceRefresh: true);
-      _sensorsFuture = _sensorService.fetchSensors();
+      _sensorsFuture = _sensorService.fetchSensors().then((s) {
+        _cachedSensors = s;
+        return s;
+      });
       _hydrographFuture = _sensorService.fetchGlobalHydrograph();
     });
-    await Future.wait([_weatherFuture, _sensorsFuture, _hydrographFuture]);
+    // Also refresh location
+    _userLat = null;
+    _userLng = null;
+    await Future.wait([
+      _weatherFuture,
+      _sensorsFuture,
+      _hydrographFuture,
+      _ensureUserLocation(request: false),
+    ]);
   }
 
   @override
@@ -156,22 +225,66 @@ class _HomePageState extends State<HomePage> {
                 },
               ),
 
-              const SizedBox(height: 40),
+              const SizedBox(height: 30),
+
+              // --- QUICK ACTIONS SECTION ---
+              _buildQuickActions(context),
+
+              const SizedBox(height: 30),
 
               // --- SENSOR SECTION ---
-              Align(
-                alignment: Alignment.centerLeft,
-                child: const Text(
-                  "Sensor Status",
-                  style: TextStyle(
-                    fontFamily: 'Poppins',
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF101C45),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    "Sensor Status",
+                    style: TextStyle(
+                      fontFamily: 'Poppins',
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF101C45),
+                    ),
                   ),
-                ),
+                  TextButton.icon(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => AllSensorsPage(
+                            sensors: _cachedSensors,
+                            userLat: _userLat,
+                            userLng: _userLng,
+                            userBarangayId: _barangayId,
+                          ),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.sensors_rounded,
+                        size: 14, color: Color(0xFF101C45)),
+                    label: const Text(
+                      'View All',
+                      style: TextStyle(
+                        color: Color(0xFF101C45),
+                        fontFamily: 'Poppins',
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    style: TextButton.styleFrom(
+                      backgroundColor: const Color(0xFFEEF1FA),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10)),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 5),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 5),
+              const SizedBox(height: 8),
+
+              // ── Sensor filter chips ──────────────────────────────
+              _buildSensorFilterChips(),
+              const SizedBox(height: 8),
 
               FutureBuilder<List<SensorModel>>(
                 future: _sensorsFuture,
@@ -189,7 +302,13 @@ class _HomePageState extends State<HomePage> {
                     return _buildErrorCard();
                   }
 
-                  final sensors = snapshot.data!;
+                  final allSensors = snapshot.data ?? [];
+                  final sensors = _applyHomeFilter(allSensors);
+                  
+                  if (sensors.isEmpty) {
+                    return _buildEmptyState();
+                  }
+
                   return Column(
                     children: sensors
                         .map((sensor) => _buildSensorCard(sensor))
@@ -250,6 +369,345 @@ class _HomePageState extends State<HomePage> {
   ///   ≥ 7 ft  : Catastrophic(#121212)
   Color _sensorPrimaryColor(SensorModel sensor) {
     return _colorFromLevel(sensor.waterLevel);
+  }
+
+  // ── Apply sensor home filter (Closest 5 / Barangay 5) ──────────────
+  List<SensorModel> _applyHomeFilter(List<SensorModel> all) {
+    final sorted = [...all];
+
+    if (_userLat != null && _userLng != null) {
+      sorted.sort((a, b) {
+        final da = (a.latitude != null && a.longitude != null)
+            ? Geolocator.distanceBetween(_userLat!, _userLng!, a.latitude!, a.longitude!)
+            : double.infinity;
+        final db = (b.latitude != null && b.longitude != null)
+            ? Geolocator.distanceBetween(_userLat!, _userLng!, b.latitude!, b.longitude!)
+            : double.infinity;
+        return da.compareTo(db);
+      });
+    }
+
+    if (_sensorFilter == _SensorFilterMode.closest) {
+      if (_userLat == null || _userLng == null) return sorted.take(5).toList();
+      final within = sorted.where((s) {
+        if (s.latitude == null || s.longitude == null) return false;
+        final d = Geolocator.distanceBetween(_userLat!, _userLng!, s.latitude!, s.longitude!);
+        return d <= 500;
+      }).toList();
+      return within.take(5).toList();
+    } else {
+      // Barangay filter: sort closest first, limit 5
+      if (_barangayId == null) return [];
+      return sorted.where((s) => s.barangayId == _barangayId).take(5).toList();
+    }
+  }
+
+  // ── Empty State Widget ─────────────────────────────────────────────
+  Widget _buildEmptyState() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 40.0),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: const [
+          Icon(
+            Icons.sensors_off_rounded,
+            size: 52,
+            color: Color(0xFFCED4E6),
+          ),
+          SizedBox(height: 12),
+          Text(
+            'No sensors found.',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: Color(0xFFA1A9BE),
+              fontFamily: 'Poppins',
+            ),
+          ),
+          SizedBox(height: 4),
+          Text(
+            'Try adjusting your filter or check back later.',
+            style: TextStyle(
+              fontSize: 12,
+              color: Color(0xFFA1A9BE),
+              fontFamily: 'Poppins',
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Quick Actions ──────────────────────────────────────────────────
+  Widget _buildQuickActions(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              "Quick Actions",
+              style: TextStyle(
+                fontFamily: 'Poppins',
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF101C45),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Column(
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: _buildQuickActionCard(
+                    title: "Report Flood",
+                    subtitle: "Submit a flood incident in your area.",
+                    icon: Icons.camera_alt_rounded,
+                    iconColor: Colors.blue,
+                    bgColor: Colors.blue.withOpacity(0.12),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const CreateReportPage()),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _buildQuickActionCard(
+                    title: "Evacuation Centers",
+                    subtitle: "Find nearby evacuation sites.",
+                    icon: Icons.home_rounded,
+                    iconColor: Colors.green,
+                    bgColor: Colors.green.withOpacity(0.12),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const SafetyPage(scrollToEvacuationCenters: true)),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildQuickActionCard(
+                    title: "Hotlines",
+                    subtitle: "Get emergency contact numbers.",
+                    icon: Icons.phone_rounded,
+                    iconColor: Colors.redAccent,
+                    bgColor: Colors.redAccent.withOpacity(0.12),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const SafetyPage()),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _buildQuickActionCard(
+                    title: "Request Evacuation",
+                    subtitle: "Send an emergency evacuation request.",
+                    icon: Icons.my_location_rounded,
+                    iconColor: Colors.orange,
+                    bgColor: Colors.orange.withOpacity(0.12),
+                    onTap: () async {
+                      try {
+                        final req = await EvacuationRequestService().getMyEvacuationRequest();
+                        if (req != null && req['status'] != null) {
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: const Text('You already have an active evacuation request.'),
+                                backgroundColor: Colors.orange,
+                                behavior: SnackBarBehavior.floating,
+                                margin: const EdgeInsets.only(bottom: 20, left: 20, right: 20),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                              ),
+                            );
+                          }
+                          return;
+                        }
+                      } catch (_) {}
+
+                      if (context.mounted) {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const EvacuationRequestForm()),
+                        );
+                      }
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildQuickActionCard({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required Color iconColor,
+    required Color bgColor,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFEEF1FA), width: 1.5),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.03),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: bgColor,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(icon, color: iconColor, size: 20),
+                ),
+                const Icon(Icons.chevron_right, size: 16, color: Color(0xFF6B7BA4)),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              title,
+              style: const TextStyle(
+                fontFamily: 'Poppins',
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+                color: Color(0xFF101C45),
+                height: 1.2,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              subtitle,
+              style: const TextStyle(
+                fontFamily: 'Poppins',
+                fontSize: 10,
+                color: Color(0xFF6B7BA4),
+                height: 1.3,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Sensor filter chips ─────────────────────────────────────────────
+  Widget _buildSensorFilterChips() {
+    const chips = [
+      (label: 'Closest Sensors', mode: _SensorFilterMode.closest,  icon: Icons.near_me_rounded),
+      (label: 'Barangay Sensors', mode: _SensorFilterMode.barangay, icon: Icons.location_city_rounded),
+    ];
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: chips.map((chip) {
+          final isSelected = _sensorFilter == chip.mode;
+          final isLoading  = isSelected && _isFetchingLocation;
+
+          return Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: GestureDetector(
+              onTap: () {
+                setState(() => _sensorFilter = chip.mode);
+                if (chip.mode == _SensorFilterMode.closest && (_userLat == null || _userLng == null)) {
+                  _ensureUserLocation(request: true);
+                }
+              },
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? const Color(0xFF101C45)
+                      : const Color(0xFFEEF1FA),
+                  borderRadius: BorderRadius.circular(30),
+                  border: Border.all(
+                    color: isSelected
+                        ? const Color(0xFF101C45)
+                        : const Color(0xFFCED4E6),
+                    width: 1.5,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (isLoading) ...[
+                      const SizedBox(
+                        width: 12, height: 12,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                    ] else if (isSelected) ...[
+                      const Icon(Icons.check_rounded,
+                          size: 14, color: Colors.white),
+                      const SizedBox(width: 4),
+                    ] else ...[
+                      Icon(chip.icon, size: 14, color: const Color(0xFF6B7BA4)),
+                      const SizedBox(width: 4),
+                    ],
+                    Text(
+                      chip.label,
+                      style: TextStyle(
+                        fontFamily: 'Poppins',
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: isSelected
+                            ? Colors.white
+                            : const Color(0xFF101C45),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
   }
 
   static Color _colorFromLevel(double wl) {

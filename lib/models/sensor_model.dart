@@ -24,6 +24,10 @@ class SensorModel {
     if (lastReadingAt == null) return false;
     return DateTime.now().toUtc().difference(lastReadingAt!.toUtc()).inMinutes < 10;
   }
+  /// The barangay ID for filtering
+  final String? barangayId;
+  /// The barangay name for filtering UI
+  final String? barangayName;
 
   // Private constructor to enforce immutability
   SensorModel._internal({
@@ -39,6 +43,8 @@ class SensorModel {
     this.latitude,
     this.longitude,
     this.lastReadingAt,
+    this.barangayId,
+    this.barangayName,
   });
 
   /// Factory constructor — all sensors are treated as ultrasonic.
@@ -53,6 +59,8 @@ class SensorModel {
     double? latitude,
     double? longitude,
     DateTime? lastReadingAt,
+    String? barangayId,
+    String? barangayName,
   }) {
     return SensorModel._internal(
       id: id,
@@ -67,6 +75,8 @@ class SensorModel {
       latitude: latitude,
       longitude: longitude,
       lastReadingAt: lastReadingAt,
+      barangayId: barangayId,
+      barangayName: barangayName,
     );
   }
 
@@ -98,6 +108,10 @@ class SensorModel {
       lastReadingAt = DateTime.tryParse(rawTs.replaceFirst(' ', 'T'));
     }
 
+    final barangayId = json['barangay_id']?.toString();
+    final rawBarangay = (json['barangay'] ?? json['sensor_area'])?.toString();
+    final barangayName = rawBarangay != null ? 'Brgy. $rawBarangay' : null;
+
     return SensorModel.ultrasonic(
       id: id,
       name: name,
@@ -109,6 +123,8 @@ class SensorModel {
       latitude: latitude,
       longitude: longitude,
       lastReadingAt: lastReadingAt,
+      barangayId: barangayId,
+      barangayName: barangayName,
     );
   }
 

@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:silag/models/evacuation_model.dart';
 import 'package:silag/models/sensor_model.dart';
 import 'package:silag/pages/subpages/evacuation_map_page.dart';
@@ -15,7 +17,8 @@ import '../services/hotline_service.dart';
 import '../models/hotline_model.dart';
 
 class SafetyPage extends StatefulWidget {
-  const SafetyPage({super.key});
+  final bool scrollToEvacuationCenters;
+  const SafetyPage({super.key, this.scrollToEvacuationCenters = false});
 
   @override
   State<SafetyPage> createState() => _SafetyPageState();
@@ -47,12 +50,28 @@ class _SafetyPageState extends State<SafetyPage> {
 
   // Evacuation request status tracking
   String? _myEvacuationStatus; // 'pending' | 'accepted' | null
+  bool _isCheckingEvacuationStatus = true;
   Timer? _statusPoller;
   bool _shownAcceptedBanner = false;
+
+  final _evacKey = GlobalKey();
 
   @override
   void initState() {
     super.initState();
+    if (widget.scrollToEvacuationCenters) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        Future.delayed(const Duration(milliseconds: 300), () {
+          if (_evacKey.currentContext != null && mounted) {
+            Scrollable.ensureVisible(
+              _evacKey.currentContext!,
+              duration: const Duration(milliseconds: 500),
+              curve: Curves.easeInOut,
+            );
+          }
+        });
+      });
+    }
     _hotlinesFuture = _hotlineService.fetchMyHotlines();
     _evacuationCentersFuture = _evacuationService.fetchEvacuationCenters().then((sites) {
       _cachedEvacuationSites = sites;
@@ -89,12 +108,19 @@ class _SafetyPageState extends State<SafetyPage> {
   }
 
   Future<void> _checkEvacuationStatus() async {
-    final data = await _evacuationRequestService.getMyEvacuationRequest();
-    if (!mounted) return;
-    final status = data?['status'] as String?;
-    setState(() => _myEvacuationStatus = status);
-    if (status == 'accepted' && !_shownAcceptedBanner) {
-      _onEvacuationAccepted(showBanner: false);
+    try {
+      final data = await _evacuationRequestService.getMyEvacuationRequest();
+      if (!mounted) return;
+      final status = data?['status'] as String?;
+      setState(() {
+        _myEvacuationStatus = status;
+        _isCheckingEvacuationStatus = false;
+      });
+      if (status == 'accepted' && !_shownAcceptedBanner) {
+        _onEvacuationAccepted(showBanner: false);
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isCheckingEvacuationStatus = false);
     }
   }
 
@@ -279,83 +305,40 @@ class _SafetyPageState extends State<SafetyPage> {
   }
 
   Future<void> _requestEvacuation() async {
-    final shouldSend = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text(
-          'Request Evacuation',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        content: const Text(
-          'This will send your current location to responders. Continue?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF101C45),
-            ),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text(
-              'Send Request',
-              style: TextStyle(color: Colors.white),
-            ),
-          ),
-        ],
-      ),
+    // Navigate to the full page form
+    final submitted = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (ctx) => const EvacuationRequestForm()),
     );
 
-    if (shouldSend != true || !mounted) return;
+    if (submitted != true || !mounted) return;
 
     setState(() => _isRequestingEvacuation = true);
 
-    try {
-      final position = await _getCurrentPositionForEvacuation();
-      await _evacuationRequestService.requestEvacuation(
-        latitude: position.latitude,
-        longitude: position.longitude,
-      );
-
-      // Immediately switch the card to PENDING — no need to wait for the
-      // background poller to fire. This prevents the button from being
-      // clickable again after a successful request.
-      if (mounted) {
-        setState(() => _myEvacuationStatus = 'pending');
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            backgroundColor: Color(0xFF101C45),
-            content: Row(
-              children: [
-                Icon(Icons.check_circle_outline, color: Colors.white, size: 18),
-                SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'Evacuation request sent. Keep your phone nearby for updates.',
-                    style: TextStyle(color: Colors.white, fontFamily: 'Poppins'),
-                  ),
+    // The form handles submission internally; we just update local state here
+    // after it reports success.
+    if (mounted) {
+      setState(() {
+        _isRequestingEvacuation = false;
+        _myEvacuationStatus = 'pending';
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          backgroundColor: Color(0xFF101C45),
+          content: Row(
+            children: [
+              Icon(Icons.check_circle_outline, color: Colors.white, size: 18),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Evacuation request sent. Keep your phone nearby for updates.',
+                  style: TextStyle(color: Colors.white, fontFamily: 'Poppins'),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            backgroundColor: Colors.red.shade700,
-            content: Text(
-              'Could not send evacuation request: ${_cleanExceptionMessage(e)}',
-              style: const TextStyle(color: Colors.white, fontFamily: 'Poppins'),
-            ),
-          ),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isRequestingEvacuation = false);
+        ),
+      );
     }
   }
 
@@ -518,6 +501,7 @@ class _SafetyPageState extends State<SafetyPage> {
 
             // --- EVACUATION CENTERS HEADER + FILTER CHIPS ---
             Row(
+              key: _evacKey,
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 const Text(
@@ -891,7 +875,7 @@ class _SafetyPageState extends State<SafetyPage> {
                     ),
                   )
                 : ElevatedButton.icon(
-                    onPressed: (isPending || _isRequestingEvacuation)
+                    onPressed: (isPending || _isRequestingEvacuation || _isCheckingEvacuationStatus)
                         ? null
                         : _requestEvacuation,
                     style: ElevatedButton.styleFrom(
@@ -899,7 +883,7 @@ class _SafetyPageState extends State<SafetyPage> {
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 12),
                     ),
-                    icon: _isRequestingEvacuation
+                    icon: (_isRequestingEvacuation || _isCheckingEvacuationStatus)
                         ? const SizedBox(
                             width: 16,
                             height: 16,
@@ -911,11 +895,13 @@ class _SafetyPageState extends State<SafetyPage> {
                           )
                         : const Icon(Icons.my_location),
                     label: Text(
-                      _isRequestingEvacuation
-                          ? 'Sending Request...'
-                          : isPending
-                              ? 'Request Sent – Awaiting Response'
-                              : 'Request Evacuation',
+                      _isCheckingEvacuationStatus
+                          ? 'Checking Status...'
+                          : _isRequestingEvacuation
+                              ? 'Sending Request...'
+                              : isPending
+                                  ? 'Request Sent – Awaiting Response'
+                                  : 'Request Evacuation',
                       style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         fontFamily: 'Poppins',
@@ -1511,6 +1497,7 @@ class _SafetyPageState extends State<SafetyPage> {
     final numberController = TextEditingController();
     String? nameError;
     String? numberError;
+    bool isAdding = false;
 
     showDialog(
       context: context,
@@ -1575,15 +1562,26 @@ class _SafetyPageState extends State<SafetyPage> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF101C45),
               ),
-              onPressed: () async {
+              onPressed: isAdding ? null : () async {
                 // Validate
                 final nameVal = nameController.text.trim();
                 final numVal = numberController.text.trim();
                 String? newNameErr;
                 String? newNumErr;
 
-                if (nameVal.isEmpty) newNameErr = 'Please enter a name';
-                if (numVal.isEmpty) newNumErr = 'Please enter a number';
+                if (nameVal.isEmpty) {
+                  newNameErr = 'Please enter a name';
+                } else if (!RegExp(r'^[a-zA-Z\s]+$').hasMatch(nameVal)) {
+                  newNameErr = 'Name cannot contain special characters';
+                }
+
+                if (numVal.isEmpty) {
+                  newNumErr = 'Please enter a number';
+                } else if (!numVal.startsWith('09')) {
+                  newNumErr = 'Number must start with 09';
+                } else if (numVal.length != 11) {
+                  newNumErr = 'Number must be 11 digits';
+                }
 
                 if (newNameErr != null || newNumErr != null) {
                   setDialogState(() {
@@ -1592,6 +1590,12 @@ class _SafetyPageState extends State<SafetyPage> {
                   });
                   return;
                 }
+
+                setDialogState(() {
+                  nameError = null;
+                  numberError = null;
+                  isAdding = true;
+                });
 
                 String capitalizedName = nameVal
                     .split(' ')
@@ -1619,9 +1623,19 @@ class _SafetyPageState extends State<SafetyPage> {
                       ),
                     );
                   }
+                  if (mounted) setDialogState(() => isAdding = false);
                 }
               },
-              child: const Text("Add", style: TextStyle(color: Colors.white)),
+              child: isAdding
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  : const Text("Add", style: TextStyle(color: Colors.white)),
             ),
           ],
         ),
@@ -1687,6 +1701,702 @@ class _SafetyPageState extends State<SafetyPage> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EVACUATION REQUEST FORM  (bottom sheet)
+// ─────────────────────────────────────────────────────────────────────────────
+
+class EvacuationRequestForm extends StatefulWidget {
+  const EvacuationRequestForm({super.key});
+
+  @override
+  State<EvacuationRequestForm> createState() => EvacuationRequestFormState();
+}
+
+class EvacuationRequestFormState extends State<EvacuationRequestForm> {
+  final _evacuationRequestService = EvacuationRequestService();
+  final _additionalInfoController = TextEditingController();
+  final _pwdOthersSpecController = TextEditingController();
+  final _picker = ImagePicker();
+
+  bool _isSubmitting = false;
+  File? _proofImage;
+  bool _showPhotoError = false;
+
+  // ── Household counts ─────────────────────────────────────────
+  int _adultsMale = 0;
+  int _adultsFemale = 0;
+  int _minorsMale = 0;
+  int _minorsFemale = 0;
+  int _toddlersMale = 0;
+  int _toddlersFemale = 0;
+  int _infantsMale = 0;
+  int _infantsFemale = 0;
+  int _seniorsMale = 0;
+  int _seniorsFemale = 0;
+
+  // ── Health conditions ────────────────────────────────────────
+  int _lactatingCount = 0;
+  int _pregnantCount = 0;
+  int _injuredCount = 0;
+  int _pwdCount = 0;
+
+  int get _total =>
+      _adultsMale + _adultsFemale +
+      _minorsMale + _minorsFemale +
+      _toddlersMale + _toddlersFemale +
+      _infantsMale + _infantsFemale +
+      _seniorsMale + _seniorsFemale;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkBypass();
+  }
+
+  Future<void> _checkBypass() async {
+    try {
+      final req = await _evacuationRequestService.getMyEvacuationRequest();
+      if (req != null && req['status'] != null && mounted) {
+        // User already has an active request! Pop immediately to prevent bypass.
+        Navigator.pop(context, false);
+      }
+    } catch (_) {}
+  }
+
+  @override
+  void dispose() {
+    _additionalInfoController.dispose();
+    _pwdOthersSpecController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickImage(ImageSource source) async {
+    Navigator.pop(context); // close the source picker
+    final picked = await _picker.pickImage(source: source, imageQuality: 75);
+    if (picked != null && mounted) {
+      setState(() => _proofImage = File(picked.path));
+    }
+  }
+
+  void _showImageSourceSheet() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.camera_alt, color: Color(0xFF101C45)),
+              title: const Text('Take a Photo', style: TextStyle(fontFamily: 'Poppins')),
+              onTap: () => _pickImage(ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library, color: Color(0xFF101C45)),
+              title: const Text('Choose from Gallery', style: TextStyle(fontFamily: 'Poppins')),
+              onTap: () => _pickImage(ImageSource.gallery),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _submit() async {
+    if (_proofImage == null) {
+      setState(() => _showPhotoError = true);
+      return;
+    }
+    setState(() => _showPhotoError = false);
+
+    setState(() => _isSubmitting = true);
+
+    try {
+      // Get GPS
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) throw Exception('Location services are disabled.');
+      LocationPermission perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) perm = await Geolocator.requestPermission();
+      if (perm == LocationPermission.deniedForever || perm == LocationPermission.denied) {
+        throw Exception('Location permission denied.');
+      }
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+      );
+
+      await _evacuationRequestService.requestEvacuation(
+        latitude: position.latitude,
+        longitude: position.longitude,
+        adultsMale: _adultsMale,
+        adultsFemale: _adultsFemale,
+        minorsMale: _minorsMale,
+        minorsFemale: _minorsFemale,
+        toddlersMale: _toddlersMale,
+        toddlersFemale: _toddlersFemale,
+        infantsMale: _infantsMale,
+        infantsFemale: _infantsFemale,
+        seniorsMale: _seniorsMale,
+        seniorsFemale: _seniorsFemale,
+        lactatingCount: _lactatingCount,
+        pregnantCount: _pregnantCount,
+        injuredCount: _injuredCount,
+        pwdCount: _pwdCount,
+        pwdTypeSpec: _pwdOthersSpecController.text.trim().isEmpty
+            ? null
+            : _pwdOthersSpecController.text.trim(),
+        additionalInfo: _additionalInfoController.text.trim().isEmpty
+            ? null
+            : _additionalInfoController.text.trim(),
+        proofImage: _proofImage,
+      );
+
+      if (mounted) Navigator.pop(context, true); // signal success to SafetyPage
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString().replaceAll('Exception: ', '')),
+            backgroundColor: Colors.red.shade700,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
+  }
+
+  // ─── UI helpers ───────────────────────────────────────────────
+
+  Widget _sectionHeader(String title, {String? subtitle}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              fontFamily: 'Poppins',
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+              color: Color(0xFF101C45),
+            ),
+          ),
+          if (subtitle != null)
+            Text(
+              subtitle,
+              style: const TextStyle(
+                fontFamily: 'Poppins',
+                fontSize: 11,
+                color: Color(0xFF64748B),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// A compact row: label | M stepper | F stepper
+  Widget _groupRow({
+    required String label,
+    required String ageRange,
+    required int maleVal,
+    required int femaleVal,
+    required ValueChanged<int> onMaleChanged,
+    required ValueChanged<int> onFemaleChanged,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          Expanded(
+            flex: 4,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label,
+                    style: const TextStyle(
+                        fontFamily: 'Poppins',
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                        color: Color(0xFF1E293B))),
+                Text(ageRange,
+                    style: const TextStyle(
+                        fontFamily: 'Poppins',
+                        fontSize: 10,
+                        color: Color(0xFF94A3B8))),
+              ],
+            ),
+          ),
+          _stepper(label: 'M', value: maleVal, onChanged: onMaleChanged),
+          const SizedBox(width: 12),
+          _stepper(label: 'F', value: femaleVal, onChanged: onFemaleChanged),
+        ],
+      ),
+    );
+  }
+
+  Widget _stepper({
+    required String label,
+    required int value,
+    required ValueChanged<int> onChanged,
+  }) {
+    return Row(
+      children: [
+        Text(label,
+            style: const TextStyle(
+                fontFamily: 'Poppins',
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF64748B))),
+        const SizedBox(width: 6),
+        GestureDetector(
+          onTap: value > 0 ? () => setState(() => onChanged(value - 1)) : null,
+          child: Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: value > 0 ? const Color(0xFFE8ECF4) : const Color(0xFFF1F5F9),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(Icons.remove, size: 14,
+                color: value > 0 ? const Color(0xFF101C45) : const Color(0xFFCBD5E1)),
+          ),
+        ),
+        SizedBox(
+          width: 30,
+          child: Text(
+            '$value',
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+                fontFamily: 'Poppins',
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+                color: Color(0xFF101C45)),
+          ),
+        ),
+        GestureDetector(
+          onTap: () => setState(() => onChanged(value + 1)),
+          child: Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: const Color(0xFF101C45),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(Icons.add, size: 14, color: Colors.white),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _countField({
+    required String label,
+    required int value,
+    required ValueChanged<int> onChanged,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(label,
+                style: const TextStyle(
+                    fontFamily: 'Poppins',
+                    fontSize: 13,
+                    color: Color(0xFF1E293B))),
+          ),
+          Row(
+            children: [
+              GestureDetector(
+                onTap: value > 0 ? () => setState(() => onChanged(value - 1)) : null,
+                child: Container(
+                  width: 28,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    color: value > 0 ? const Color(0xFFE8ECF4) : const Color(0xFFF1F5F9),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(Icons.remove, size: 14,
+                      color: value > 0 ? const Color(0xFF101C45) : const Color(0xFFCBD5E1)),
+                ),
+              ),
+              SizedBox(
+                width: 36,
+                child: Text('$value',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                        fontFamily: 'Poppins',
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                        color: Color(0xFF101C45))),
+              ),
+              GestureDetector(
+                onTap: () => setState(() => onChanged(value + 1)),
+                child: Container(
+                  width: 28,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF101C45),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.add, size: 14, color: Colors.white),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ─── Build ────────────────────────────────────────────────────
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Color(0xFF101C45)),
+          onPressed: () => Navigator.pop(context, false),
+        ),
+      ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 40),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+
+            // ── Title ───────────────────────────────────────────
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEEF1FA),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.directions_run_rounded,
+                      color: Color(0xFF101C45), size: 22),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Request Evacuation',
+                          style: TextStyle(
+                              fontFamily: 'Poppins',
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                              color: Color(0xFF101C45))),
+                      Text('Help us prepare the right resources for you.',
+                          style: TextStyle(
+                              fontFamily: 'Poppins',
+                              fontSize: 11,
+                              color: Color(0xFF64748B))),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            const Divider(color: Color(0xFFE8ECF4)),
+            const SizedBox(height: 16),
+
+            // ═══════════════════════════════════════════════════
+            // SECTION 1 — HOUSEHOLD COUNT
+            // ═══════════════════════════════════════════════════
+            _sectionHeader(
+              'Household Count',
+              subtitle: 'How many people need evacuation?',
+            ),
+            _groupRow(
+              label: 'Adults',
+              ageRange: '18 years and above',
+              maleVal: _adultsMale,
+              femaleVal: _adultsFemale,
+              onMaleChanged: (v) => _adultsMale = v,
+              onFemaleChanged: (v) => _adultsFemale = v,
+            ),
+            _groupRow(
+              label: 'Minors',
+              ageRange: '4 – 17 years old',
+              maleVal: _minorsMale,
+              femaleVal: _minorsFemale,
+              onMaleChanged: (v) => _minorsMale = v,
+              onFemaleChanged: (v) => _minorsFemale = v,
+            ),
+            _groupRow(
+              label: 'Toddlers',
+              ageRange: '1 – 3 years old',
+              maleVal: _toddlersMale,
+              femaleVal: _toddlersFemale,
+              onMaleChanged: (v) => _toddlersMale = v,
+              onFemaleChanged: (v) => _toddlersFemale = v,
+            ),
+            _groupRow(
+              label: 'Infants',
+              ageRange: '0 – 11 months',
+              maleVal: _infantsMale,
+              femaleVal: _infantsFemale,
+              onMaleChanged: (v) => _infantsMale = v,
+              onFemaleChanged: (v) => _infantsFemale = v,
+            ),
+            _groupRow(
+              label: 'Seniors',
+              ageRange: '60 years and above',
+              maleVal: _seniorsMale,
+              femaleVal: _seniorsFemale,
+              onMaleChanged: (v) => _seniorsMale = v,
+              onFemaleChanged: (v) => _seniorsFemale = v,
+            ),
+
+            // ── Auto-total ──────────────────────────────────────
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEEF1FA),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Total Persons',
+                      style: TextStyle(
+                          fontFamily: 'Poppins',
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                          color: Color(0xFF101C45))),
+                  Text(
+                    '$_total',
+                    style: const TextStyle(
+                        fontFamily: 'Poppins',
+                        fontWeight: FontWeight.bold,
+                        fontSize: 20,
+                        color: Color(0xFF101C45)),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 20),
+            const Divider(color: Color(0xFFE8ECF4)),
+            const SizedBox(height: 16),
+
+            // ═══════════════════════════════════════════════════
+            // SECTION 2 — HEALTH CONDITIONS
+            // ═══════════════════════════════════════════════════
+            _sectionHeader(
+              'Health / Special Conditions',
+              subtitle: 'For medical preparedness',
+            ),
+            _countField(
+              label: 'Lactating Women',
+              value: _lactatingCount,
+              onChanged: (v) => _lactatingCount = v,
+            ),
+            _countField(
+              label: 'Pregnant Women',
+              value: _pregnantCount,
+              onChanged: (v) => _pregnantCount = v,
+            ),
+
+            _countField(
+              label: 'Injured Persons',
+              value: _injuredCount,
+              onChanged: (v) => _injuredCount = v,
+            ),
+            _countField(
+              label: 'Person with Disability (PWD)',
+              value: _pwdCount,
+              onChanged: (v) => _pwdCount = v,
+            ),
+            if (_pwdCount > 0) ...[
+              const SizedBox(height: 6),
+              TextField(
+                controller: _pwdOthersSpecController,
+                decoration: InputDecoration(
+                  labelText: 'Specify type of disability',
+                  labelStyle: const TextStyle(fontFamily: 'Poppins', fontSize: 12),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                ),
+                style: const TextStyle(fontFamily: 'Poppins', fontSize: 13),
+              ),
+            ],
+
+            const SizedBox(height: 20),
+            const Divider(color: Color(0xFFE8ECF4)),
+            const SizedBox(height: 16),
+
+            // ═══════════════════════════════════════════════════
+            // SECTION 3 — ADDITIONAL INFORMATION
+            // ═══════════════════════════════════════════════════
+            _sectionHeader(
+              'Additional Information',
+              subtitle:
+                  'List things responders must bring (e.g. oxygen, wheelchair, medications)',
+            ),
+            TextField(
+              controller: _additionalInfoController,
+              maxLines: 4,
+              decoration: InputDecoration(
+                hintText: 'e.g. Oxygen tank needed, diabetic patient, etc.',
+                hintStyle: const TextStyle(fontFamily: 'Poppins', fontSize: 12, color: Color(0xFFADB5C7)),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                contentPadding: const EdgeInsets.all(12),
+              ),
+              style: const TextStyle(fontFamily: 'Poppins', fontSize: 13),
+            ),
+
+            const SizedBox(height: 20),
+            const Divider(color: Color(0xFFE8ECF4)),
+            const SizedBox(height: 16),
+
+            // ═══════════════════════════════════════════════════
+            // SECTION 4 — PROOF PHOTO
+            // ═══════════════════════════════════════════════════
+            _sectionHeader(
+              'Proof Photo',
+              subtitle: 'Required — helps verify the request (e.g. current situation, Barangay ID)',
+            ),
+            GestureDetector(
+              onTap: _showImageSourceSheet,
+              child: Container(
+                height: 150,
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: _proofImage != null
+                        ? const Color(0xFF00C97A)
+                        : const Color(0xFFCBD5E1),
+                    width: 1.5,
+                  ),
+                ),
+                child: _proofImage != null
+                    ? ClipRRect(
+                        borderRadius: BorderRadius.circular(11),
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            Image.file(_proofImage!, fit: BoxFit.cover),
+                            Positioned(
+                              top: 8,
+                              right: 8,
+                              child: GestureDetector(
+                                onTap: () => setState(() => _proofImage = null),
+                                child: Container(
+                                  padding: const EdgeInsets.all(4),
+                                  decoration: const BoxDecoration(
+                                    color: Colors.black54,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(Icons.close, color: Colors.white, size: 14),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: const [
+                          Icon(Icons.add_a_photo_outlined, size: 36, color: Color(0xFFADB5C7)),
+                          SizedBox(height: 8),
+                          Text('Tap to attach photo',
+                              style: TextStyle(
+                                  fontFamily: 'Poppins',
+                                  fontSize: 12,
+                                  color: Color(0xFFADB5C7))),
+                          SizedBox(height: 4),
+                          Text('Camera or Gallery',
+                              style: TextStyle(
+                                  fontFamily: 'Poppins',
+                                  fontSize: 11,
+                                  color: Color(0xFFCBD5E1))),
+                        ],
+                      ),
+              ),
+            ),
+
+            if (_showPhotoError) ...[
+              const SizedBox(height: 8),
+              const Text(
+                'Please attach a proof photo before submitting.',
+                style: TextStyle(
+                  color: Colors.red,
+                  fontSize: 12,
+                  fontFamily: 'Poppins',
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+
+            const SizedBox(height: 24),
+
+            // ── Submit & Cancel buttons ──────────────────────────
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: _isSubmitting ? null : () => Navigator.pop(context, false),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      side: const BorderSide(color: Color(0xFFCBD5E1)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: const Text('Cancel',
+                        style: TextStyle(
+                            fontFamily: 'Poppins',
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF64748B))),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  flex: 2,
+                  child: ElevatedButton(
+                    onPressed: _isSubmitting ? null : _submit,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF101C45),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: _isSubmitting
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white)),
+                          )
+                        : const Text('Send Evacuation Request',
+                            style: TextStyle(
+                                fontFamily: 'Poppins',
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white)),
+                  ),
+                ),
+              ],
+            ),
+          ],
+          ),
+        ),
       ),
     );
   }
