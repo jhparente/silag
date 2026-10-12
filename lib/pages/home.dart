@@ -71,7 +71,6 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _ensureUserLocation({bool request = false}) async {
-    if (_userLat != null && _userLng != null) return;
     if (_isFetchingLocation) return;
     setState(() => _isFetchingLocation = true);
     try {
@@ -84,9 +83,22 @@ class _HomePageState extends State<HomePage> {
       }
       if (perm == LocationPermission.denied ||
           perm == LocationPermission.deniedForever) return;
+
+      // 1. Instantly use last known position if available (~5ms)
+      final lastKnown = await Geolocator.getLastKnownPosition();
+      if (lastKnown != null && mounted) {
+        setState(() {
+          _userLat = lastKnown.latitude;
+          _userLng = lastKnown.longitude;
+        });
+      }
+
+      // 2. Fetch fresh position with a strict 3-second timeout
       final pos = await Geolocator.getCurrentPosition(
-        locationSettings:
-            const LocationSettings(accuracy: LocationAccuracy.high),
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.medium,
+          timeLimit: Duration(seconds: 3),
+        ),
       );
       if (mounted) {
         setState(() {
@@ -95,6 +107,7 @@ class _HomePageState extends State<HomePage> {
         });
       }
     } catch (_) {
+      // Ignored or timed out; existing coordinates remain intact
     } finally {
       if (mounted) setState(() => _isFetchingLocation = false);
     }
@@ -177,13 +190,14 @@ class _HomePageState extends State<HomePage> {
         return s;
       });
     });
-    // Also refresh location
-    _userLat = null;
-    _userLng = null;
+    // Refresh location concurrently without wiping coordinates or blocking the spinner indefinitely
     await Future.wait([
       _weatherFuture,
       _sensorsFuture,
-      _ensureUserLocation(request: false),
+      _ensureUserLocation(request: false).timeout(
+        const Duration(seconds: 3),
+        onTimeout: () {},
+      ),
     ]);
   }
 

@@ -160,11 +160,20 @@ class _SafetyPageState extends State<SafetyPage> {
 
   /// Fetch (or reuse) the user's current position for distance filtering.
   Future<void> _ensureUserLocation() async {
-    if (_userLat != null && _userLng != null) return;
     if (_isFetchingLocation) return;
     setState(() => _isFetchingLocation = true);
     try {
-      final pos = await _getCurrentPositionForEvacuation();
+      // 1. Instantly use last known position if available (~5ms)
+      final lastKnown = await Geolocator.getLastKnownPosition();
+      if (lastKnown != null && mounted) {
+        setState(() {
+          _userLat = lastKnown.latitude;
+          _userLng = lastKnown.longitude;
+        });
+      }
+
+      // 2. Fetch fresh position with a strict 3-second timeout
+      final pos = await _getCurrentPositionForEvacuation(timeLimit: const Duration(seconds: 3));
       if (mounted) {
         setState(() {
           _userLat = pos.latitude;
@@ -278,7 +287,7 @@ class _SafetyPageState extends State<SafetyPage> {
     return error.toString().replaceAll('Exception: ', '').trim();
   }
 
-  Future<Position> _getCurrentPositionForEvacuation() async {
+  Future<Position> _getCurrentPositionForEvacuation({Duration? timeLimit}) async {
     final serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
       throw Exception('Location services are disabled. Please enable GPS.');
@@ -300,7 +309,10 @@ class _SafetyPageState extends State<SafetyPage> {
     }
 
     return Geolocator.getCurrentPosition(
-      locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+      locationSettings: LocationSettings(
+        accuracy: timeLimit != null ? LocationAccuracy.medium : LocationAccuracy.high,
+        timeLimit: timeLimit,
+      ),
     );
   }
 
@@ -405,12 +417,11 @@ class _SafetyPageState extends State<SafetyPage> {
               if (mounted) setState(() => _cachedSensors = s);
             }).catchError((_) {}),
             _checkEvacuationStatus(),
-            // Refresh location so distance filter stays accurate
-            (() async {
-              _userLat = null;
-              _userLng = null;
-              await _ensureUserLocation();
-            })(),
+            // Refresh location so distance filter stays accurate without blocking refresh
+            _ensureUserLocation().timeout(
+              const Duration(seconds: 3),
+              onTimeout: () {},
+            ),
           ]);
         },
         child: SingleChildScrollView(
