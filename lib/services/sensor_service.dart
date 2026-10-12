@@ -29,52 +29,15 @@ class SensorService {
         endpointName: 'sensors',
       );
 
-      final logsResponse = await http
-          .get(_buildUri('sensor_logs'))
-          .timeout(const Duration(seconds: 15));
-
-      final logRows = _extractRowsFromResponse(
-        response: logsResponse,
-        endpointName: 'sensor_logs',
-      );
-
-      final sensorsById = <String, Map<String, dynamic>>{};
+      final sensors = <SensorModel>[];
       for (final row in sensorRows) {
         final id = (row['id'] ?? row['sensor_id'] ?? '').toString().trim();
         if (id.isEmpty) continue;
-        sensorsById[id] = row;
+        sensors.add(SensorModel.fromJson(row));
       }
 
-      if (sensorsById.isEmpty) return [];
-
-      final latestLogBySensorId = _latestLogBySensorId(logRows);
-
-      // Iterate over ALL sensors (not just those with logs) so that newly
-      // registered sensors with no log history are still displayed.
-      final mergedRows = sensorsById.entries.map((entry) {
-        final sensorId = entry.key;
-        final sensorRow = entry.value;
-        final logRow = latestLogBySensorId[sensorId] ?? const <String, dynamic>{};
-
-        return <String, dynamic>{
-          ...sensorRow,
-          ...logRow,
-          'id': sensorRow['id'] ?? sensorId,
-          'sensor_id': sensorId,
-          'current_water_level':
-              logRow['water_level'] ?? sensorRow['current_water_level'],
-          'flood_status': logRow['status'] ?? sensorRow['flood_status'],
-          'status': logRow['status'] ?? sensorRow['status'],
-        };
-      }).toList();
-
-      mergedRows.sort((a, b) {
-        final aId = (a['id'] ?? a['sensor_id'] ?? '').toString();
-        final bId = (b['id'] ?? b['sensor_id'] ?? '').toString();
-        return aId.compareTo(bId);
-      });
-
-      return mergedRows.map(SensorModel.fromJson).toList();
+      sensors.sort((a, b) => a.id.compareTo(b.id));
+      return sensors;
     } catch (e) {
       final errStr = e.toString();
       if (errStr.contains('ClientException') ||
@@ -117,36 +80,6 @@ class SensorService {
         .toList();
   }
 
-  Map<String, Map<String, dynamic>> _latestLogBySensorId(
-    List<Map<String, dynamic>> logRows,
-  ) {
-    final latest = <String, Map<String, dynamic>>{};
-    final latestTimestamps = <String, DateTime?>{};
-
-    for (final row in logRows) {
-      final sensorId = (row['sensor_id'] ?? row['id'] ?? '').toString().trim();
-      if (sensorId.isEmpty) continue;
-
-      final recordedAtRaw = (row['recorded_at'] ?? '').toString();
-      final recordedAt = DateTime.tryParse(recordedAtRaw);
-
-      final currentTs = latestTimestamps[sensorId];
-      final shouldReplace =
-          !latest.containsKey(sensorId) ||
-          (recordedAt != null && currentTs == null) ||
-          (recordedAt != null &&
-              currentTs != null &&
-              recordedAt.isAfter(currentTs)) ||
-          (recordedAt == null && currentTs == null);
-
-      if (shouldReplace) {
-        latest[sensorId] = row;
-        latestTimestamps[sensorId] = recordedAt;
-      }
-    }
-
-    return latest;
-  }
 
   Future<HydrographModel> fetchGlobalHydrograph() async {
     try {
