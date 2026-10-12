@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'pages/home.dart';
-import 'pages/report.dart';
+import 'pages/map_page.dart';
 import 'pages/safety.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'services/api_client.dart';
@@ -19,7 +19,7 @@ class _MainScreenState extends State<MainScreen> {
   final List<Widget> _pages = [
     const HomePage(),
     const SafetyPage(),
-    const ReportPage(),
+    const MapPage(),
   ];
 
   void _onItemTapped(int index) {
@@ -136,8 +136,11 @@ class _MainScreenState extends State<MainScreen> {
                     : Colors.transparent,
               ),
               child: IconButton(
-                icon: const Icon(Icons.warning_amber_rounded, size: 35),
-                color: _currentIndex == 2 ? Colors.white : Color(0xFF162455),
+                icon: Icon(
+                  _currentIndex == 2 ? Icons.map_rounded : Icons.map_outlined,
+                  size: 32,
+                ),
+                color: _currentIndex == 2 ? Colors.white : const Color(0xFF162455),
                 onPressed: () => _onItemTapped(2),
               ),
             ),

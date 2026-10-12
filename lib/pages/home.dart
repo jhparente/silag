@@ -10,7 +10,7 @@ import 'package:silag/pages/profile_page.dart';
 import 'package:silag/pages/subpages/notifications_page.dart';
 import 'package:silag/pages/subpages/all_sensors_page.dart';
 import 'package:silag/pages/subpages/sensor_detail_page.dart';
-import 'package:silag/pages/subpages/create_report.dart';
+import 'package:silag/pages/map_page.dart';
 import 'package:silag/pages/safety.dart';
 import 'package:silag/services/evacuation_request_service.dart';
 import 'package:silag/services/api_config.dart';
@@ -437,15 +437,15 @@ class _HomePageState extends State<HomePage> {
               children: [
                 Expanded(
                   child: _buildQuickActionCard(
-                    title: "Report Flood",
-                    subtitle: "Submit a flood incident in your area.",
-                    icon: Icons.camera_alt_rounded,
+                    title: "View Map",
+                    subtitle: "Explore live sensors & evacuation sites.",
+                    icon: Icons.map_rounded,
                     iconColor: Colors.blue,
                     bgColor: Colors.blue.withOpacity(0.12),
                     onTap: () {
                       Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (_) => const CreateReportPage()),
+                        MaterialPageRoute(builder: (_) => const MapPage()),
                       );
                     },
                   ),

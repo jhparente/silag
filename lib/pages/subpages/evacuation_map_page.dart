@@ -724,38 +724,74 @@ class _EvacuationMapPageState extends State<EvacuationMapPage>
                       left: 0,
                       right: 0,
                       child: Container(
-                        padding: const EdgeInsets.fromLTRB(24, 16, 24, 28),
+                        padding: EdgeInsets.fromLTRB(
+                          24,
+                          16,
+                          24,
+                          math.max(MediaQuery.of(context).padding.bottom + 12, 28),
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.white,
                           borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-                          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 16, offset: const Offset(0, -4))],
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.08),
+                              blurRadius: 16,
+                              offset: const Offset(0, -4),
+                            ),
+                          ],
                         ),
                         child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  _distanceText ?? '-- km',
-                                  style: const TextStyle(color: Color(0xFF00C97A), fontSize: 22, fontWeight: FontWeight.bold, fontFamily: 'Poppins'),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  'To ${widget.destName}',
-                                  style: const TextStyle(color: Color(0xFF64748B), fontSize: 13, fontFamily: 'Poppins'),
-                                ),
-                              ],
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    _distanceText ?? '-- km',
+                                    style: const TextStyle(
+                                      color: Color(0xFF00C97A),
+                                      fontSize: 22,
+                                      fontWeight: FontWeight.bold,
+                                      fontFamily: 'Poppins',
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    'To ${widget.destName}',
+                                    style: const TextStyle(
+                                      color: Color(0xFF64748B),
+                                      fontSize: 13,
+                                      fontFamily: 'Poppins',
+                                      height: 1.3,
+                                    ),
+                                    maxLines: 3,
+                                    overflow: TextOverflow.ellipsis,
+                                    softWrap: true,
+                                  ),
+                                ],
+                              ),
                             ),
+                            const SizedBox(width: 16),
                             ElevatedButton(
                               onPressed: () => Navigator.pop(context),
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.redAccent,
+                                foregroundColor: Colors.white,
+                                elevation: 0,
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
                               ),
-                              child: const Text('Exit', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold, fontFamily: 'Poppins')),
+                              child: const Text(
+                                'Exit',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  fontFamily: 'Poppins',
+                                ),
+                              ),
                             ),
                           ],
                         ),

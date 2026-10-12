@@ -7,11 +7,14 @@ import 'package:image_picker/image_picker.dart';
 import 'package:silag/models/evacuation_model.dart';
 import 'package:silag/models/sensor_model.dart';
 import 'package:silag/pages/subpages/evacuation_map_page.dart';
-import 'package:silag/pages/subpages/site_overview_map_page.dart';
 import 'package:silag/services/evacuation_request_service.dart';
 import 'package:silag/services/evacuation_service.dart';
 import 'package:silag/services/sensor_service.dart';
 import 'package:silag/widgets/skeleton_loader.dart';
+import 'package:silag/models/community_status_model.dart';
+import 'package:silag/services/community_status_services.dart';
+import 'package:silag/pages/subpages/create_report.dart';
+import 'package:silag/pages/subpages/sensor_detail_page.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/hotline_service.dart';
 import '../models/hotline_model.dart';
@@ -29,11 +32,15 @@ class _SafetyPageState extends State<SafetyPage> {
   final _evacuationService = EvacuationService();
   final _evacuationRequestService = EvacuationRequestService();
   final _sensorService = SensorService();
+  final _communityStatusService = CommunityStatusServices();
 
   late Future<List<HotlineModel>> _hotlinesFuture;
   late Future<List<EvacuationModel>> _evacuationCentersFuture;
   List<SensorModel> _cachedSensors = [];
   List<EvacuationModel> _cachedEvacuationSites = [];
+  CommunitySafetyStatus? _communityStats;
+  bool _hasVoted = false;
+  bool _isVoting = false;
   bool _isRequestingEvacuation = false;
   int _localHotlineCount = 0; // tracks only the user's local hotlines
 
@@ -81,6 +88,7 @@ class _SafetyPageState extends State<SafetyPage> {
       if (mounted) setState(() => _cachedSensors = s);
     }).catchError((_) {});
     _startStatusPolling();
+    _loadCommunityStats();
     // Start fetching location immediately so the default 500 m filter works.
     _ensureUserLocation();
 
@@ -283,9 +291,6 @@ class _SafetyPageState extends State<SafetyPage> {
     }
   }
 
-  String _cleanExceptionMessage(Object error) {
-    return error.toString().replaceAll('Exception: ', '').trim();
-  }
 
   Future<Position> _getCurrentPositionForEvacuation({Duration? timeLimit}) async {
     final serviceEnabled = await Geolocator.isLocationServiceEnabled();
@@ -417,6 +422,7 @@ class _SafetyPageState extends State<SafetyPage> {
               if (mounted) setState(() => _cachedSensors = s);
             }).catchError((_) {}),
             _checkEvacuationStatus(),
+            _loadCommunityStats(),
             // Refresh location so distance filter stays accurate without blocking refresh
             _ensureUserLocation().timeout(
               const Duration(seconds: 3),
@@ -430,7 +436,7 @@ class _SafetyPageState extends State<SafetyPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // --- HEADER ---
+            // ── 1. EMERGENCY HOTLINES ──────────────────────────────────────
             const Text(
               "Emergency Hotlines",
               style: TextStyle(
@@ -496,6 +502,7 @@ class _SafetyPageState extends State<SafetyPage> {
             ),
             const SizedBox(height: 35),
 
+            // ── 2. REQUEST EVACUATION ──────────────────────────────────────
             const Text(
               "Request Evacuation",
               style: TextStyle(
@@ -510,49 +517,25 @@ class _SafetyPageState extends State<SafetyPage> {
             _buildEvacuationRequestCard(),
             const SizedBox(height: 35),
 
-            // --- EVACUATION CENTERS HEADER + FILTER CHIPS ---
-            Row(
+            // ── 3. COMMUNITY SAFETY STATUS & FLOOD REPORT ─────────────────
+            _buildCommunitySafetySection(),
+
+            const SizedBox(height: 25),
+
+            _buildFloodReportPromptCard(),
+
+            const SizedBox(height: 35),
+
+            // ── 4. EVACUATION CENTERS ──────────────────────────────────────
+            Text(
               key: _evacKey,
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  "Evacuation Centers",
-                  style: TextStyle(
-                    color: Color(0xFF101C45),
-                    fontWeight: FontWeight.bold,
-                    fontSize: 18,
-                    fontFamily: 'Poppins',
-                  ),
-                ),
-                TextButton.icon(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => SiteOverviewMapPage(
-                          sites: _cachedEvacuationSites,
-                          sensors: _cachedSensors,
-                        ),
-                      ),
-                    );
-                  },
-                  icon: const Icon(Icons.map_outlined, size: 16, color: Color(0xFF101C45)),
-                  label: const Text(
-                    'View Map',
-                    style: TextStyle(
-                      color: Color(0xFF101C45),
-                      fontFamily: 'Poppins',
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  style: TextButton.styleFrom(
-                    backgroundColor: const Color(0xFFEEF1FA),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  ),
-                ),
-              ],
+              "Evacuation Centers",
+              style: const TextStyle(
+                color: Color(0xFF101C45),
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
+                fontFamily: 'Poppins',
+              ),
             ),
             const SizedBox(height: 10),
 
@@ -598,7 +581,8 @@ class _SafetyPageState extends State<SafetyPage> {
             ),
 
             const SizedBox(height: 35),
-            // --- GUIDELINES ---
+
+            // ── 5. GUIDELINES ──────────────────────────────────────────────
             const Text(
               "Guidelines",
               style: TextStyle(
@@ -1709,6 +1693,575 @@ class _SafetyPageState extends State<SafetyPage> {
                   ),
                 ),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── COMMUNITY SAFETY STATUS POLL & IOT FLOOD REPORT METHODS ───────────────
+
+  Future<void> _loadCommunityStats() async {
+    try {
+      final stats = await _communityStatusService.fetchCommunitySafetyStatus();
+      if (mounted) {
+        setState(() {
+          _communityStats = stats;
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _castSafetyVote(bool isSafe) async {
+    if (_hasVoted || _isVoting) return;
+    setState(() => _isVoting = true);
+    try {
+      await _communityStatusService.castVote(isSafe);
+      if (mounted) {
+        setState(() {
+          _hasVoted = true;
+          if (_communityStats != null) {
+            if (isSafe) {
+              _communityStats!.safeCount += 1;
+            } else {
+              _communityStats!.unsafeCount += 1;
+            }
+          }
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: isSafe ? const Color(0xFF00C97A) : const Color(0xFF101C45),
+            content: Text(
+              isSafe
+                  ? 'Marked as safe. Stay alert for updates!'
+                  : 'Marked as not safe. If you need rescue, use Request Evacuation below.',
+              style: const TextStyle(color: Colors.white, fontFamily: 'Poppins'),
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString().replaceAll('Exception: ', ''))),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isVoting = false);
+    }
+  }
+
+  Future<void> _handleReportFloodPressed() async {
+    // Ensure user location is known
+    if (_userLat == null || _userLng == null) {
+      await _ensureUserLocation();
+    }
+
+    // Get sensors
+    List<SensorModel> sensors = _cachedSensors;
+    if (sensors.isEmpty) {
+      try {
+        sensors = await _sensorService.fetchSensors();
+        if (mounted) setState(() => _cachedSensors = sensors);
+      } catch (_) {}
+    }
+
+    // Proximity check: Is there an active sensor within 500 meters?
+    if (_userLat != null && _userLng != null && sensors.isNotEmpty) {
+      SensorModel? closestSensor;
+      double minDistance = double.infinity;
+
+      for (final s in sensors) {
+        if (s.latitude != null && s.longitude != null) {
+          final d = Geolocator.distanceBetween(
+            _userLat!,
+            _userLng!,
+            s.latitude!,
+            s.longitude!,
+          );
+          if (d < minDistance) {
+            minDistance = d;
+            closestSensor = s;
+          }
+        }
+      }
+
+      // 500m threshold validation
+      if (minDistance <= 500 && closestSensor != null && mounted) {
+        _showNearbySensorDetectedDialog(closestSensor, minDistance);
+        return;
+      }
+    }
+
+    // No sensor within 500m (or location unavailable): open flood reporting page
+    if (mounted) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const CreateReportPage()),
+      );
+    }
+  }
+
+  void _showNearbySensorDetectedDialog(SensorModel sensor, double distanceMeters) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+        actionsPadding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF101C45).withOpacity(0.08),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.sensors, color: Color(0xFF101C45), size: 22),
+            ),
+            const SizedBox(width: 10),
+            const Expanded(
+              child: Text(
+                'Active Sensor Nearby',
+                style: TextStyle(
+                  fontFamily: 'Poppins',
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                  color: Color(0xFF101C45),
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'A flood telemetry sensor is active within 500m of your location:',
+              style: TextStyle(
+                fontFamily: 'Poppins',
+                fontSize: 12,
+                color: Colors.grey[700],
+              ),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.location_on_rounded, size: 16, color: Color(0xFF101C45)),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          sensor.name,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontFamily: 'Poppins',
+                            fontSize: 13,
+                            color: Color(0xFF101C45),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    '• Distance: ${distanceMeters.toStringAsFixed(0)} meters away',
+                    style: const TextStyle(
+                      fontFamily: 'Poppins',
+                      fontSize: 12,
+                      color: Color(0xFF64748B),
+                    ),
+                  ),
+                  Text(
+                    '• Current Reading: ${sensor.waterLevel.toStringAsFixed(2)} ft',
+                    style: const TextStyle(
+                      fontFamily: 'Poppins',
+                      fontSize: 12,
+                      color: Color(0xFF64748B),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'SILAG automatically streams official water level telemetry from this IoT node. You can check the sensor or proceed to report if you have a localized block.',
+              style: TextStyle(
+                fontFamily: 'Poppins',
+                fontSize: 11,
+                color: Colors.grey[600],
+                height: 1.4,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const CreateReportPage()),
+              );
+            },
+            child: const Text(
+              'Report Anyway',
+              style: TextStyle(
+                color: Color(0xFF64748B),
+                fontFamily: 'Poppins',
+                fontSize: 12,
+              ),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => SensorDetailPage(
+                    sensor: sensor,
+                    userLat: _userLat,
+                    userLng: _userLng,
+                  ),
+                ),
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF101C45),
+              foregroundColor: Colors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            child: const Text(
+              'View Sensor',
+              style: TextStyle(
+                fontFamily: 'Poppins',
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCommunitySafetySection() {
+    final safeCount = _communityStats?.safeCount ?? 0;
+    final unsafeCount = _communityStats?.unsafeCount ?? 0;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          "Community Safety Status",
+          style: TextStyle(
+            color: Color(0xFF101C45),
+            fontWeight: FontWeight.bold,
+            fontSize: 18,
+            fontFamily: 'Poppins',
+          ),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: _buildPollStatCard(
+                safeCount.toString(),
+                "Marked Safe",
+                Icons.gpp_good_rounded,
+                const Color(0xFF00C97A),
+                const Color(0xFFE8F9F1),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildPollStatCard(
+                unsafeCount.toString(),
+                "Not Safe",
+                Icons.gpp_bad_rounded,
+                const Color(0xFFEF4444),
+                const Color(0xFFFEE2E2),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.04),
+                blurRadius: 10,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                "Are you safe?",
+                style: TextStyle(
+                  color: Color(0xFF101C45),
+                  fontWeight: FontWeight.bold,
+                  fontSize: 15,
+                  fontFamily: 'Poppins',
+                ),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                "Update your safety status to inform your local barangay community.",
+                style: TextStyle(
+                  color: Color(0xFF64748B),
+                  fontSize: 12,
+                  fontFamily: 'Poppins',
+                ),
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: (_hasVoted || _isVoting)
+                          ? null
+                          : () => _castSafetyVote(true),
+                      icon: const Icon(Icons.check_circle_outline, size: 18),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        side: const BorderSide(color: Color(0xFF00C97A), width: 1.5),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        foregroundColor: const Color(0xFF008751),
+                      ),
+                      label: const Text(
+                        "Yes, I'm safe",
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontFamily: 'Poppins',
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: (_hasVoted || _isVoting)
+                          ? null
+                          : () => _castSafetyVote(false),
+                      icon: const Icon(Icons.warning_amber_rounded, size: 18),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF101C45),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        elevation: 0,
+                      ),
+                      label: const Text(
+                        "No, I'm not safe",
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontFamily: 'Poppins',
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              if (_hasVoted)
+                const Padding(
+                  padding: EdgeInsets.only(top: 10),
+                  child: Center(
+                    child: Text(
+                      "✓ Status recorded for this hour.",
+                      style: TextStyle(
+                        color: Color(0xFF00C97A),
+                        fontSize: 11,
+                        fontStyle: FontStyle.italic,
+                        fontFamily: 'Poppins',
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPollStatCard(
+    String value,
+    String label,
+    IconData icon,
+    Color accentColor,
+    Color bgColor,
+  ) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.02),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: bgColor,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: accentColor, size: 20),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  value,
+                  style: TextStyle(
+                    fontFamily: 'Poppins',
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18,
+                    color: accentColor,
+                  ),
+                ),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontFamily: 'Poppins',
+                    fontSize: 11,
+                    color: Color(0xFF64748B),
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFloodReportPromptCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF101C45), Color(0xFF1E3A8A)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF101C45).withOpacity(0.25),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.sensors_off_rounded,
+                  color: Colors.white,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  "No sensors nearby? Report a flood",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontFamily: 'Poppins',
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            "SILAG relies primarily on automated IoT sensor telemetry. If your immediate street has no sensor active within 500m, submit a citizen field report.",
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.85),
+              fontFamily: 'Poppins',
+              fontSize: 12,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _handleReportFloodPressed,
+              icon: const Icon(Icons.camera_alt_rounded, size: 18),
+              label: const Text(
+                "Report Flood",
+                style: TextStyle(
+                  fontFamily: 'Poppins',
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                ),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white,
+                foregroundColor: const Color(0xFF101C45),
+                elevation: 0,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
             ),
           ),
         ],
