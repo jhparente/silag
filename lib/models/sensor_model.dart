@@ -1,3 +1,5 @@
+import 'flood_level_template.dart';
+
 // All sensors are ultrasonic — the float sensor type was removed from the database.
 enum SensorType { ultrasonic }
 
@@ -29,6 +31,11 @@ class SensorModel {
   /// The barangay name for filtering UI
   final String? barangayName;
 
+  /// Hardware / IoT node telemetry
+  final int? batteryLevel;
+  final int? signalStrength;
+  final String? rssiValue;
+
   // Private constructor to enforce immutability
   SensorModel._internal({
     required this.id,
@@ -45,6 +52,9 @@ class SensorModel {
     this.lastReadingAt,
     this.barangayId,
     this.barangayName,
+    this.batteryLevel,
+    this.signalStrength,
+    this.rssiValue,
   });
 
   /// Factory constructor — all sensors are treated as ultrasonic.
@@ -61,13 +71,17 @@ class SensorModel {
     DateTime? lastReadingAt,
     String? barangayId,
     String? barangayName,
+    int? batteryLevel,
+    int? signalStrength,
+    String? rssiValue,
+    bool isRising = false,
   }) {
     return SensorModel._internal(
       id: id,
       name: name,
       type: SensorType.ultrasonic,
       waterLevel: waterLevel,
-      isRising: false,
+      isRising: isRising,
       status: status,
       location: location,
       normalThresholdFt: normalThresholdFt,
@@ -77,6 +91,9 @@ class SensorModel {
       lastReadingAt: lastReadingAt,
       barangayId: barangayId,
       barangayName: barangayName,
+      batteryLevel: batteryLevel,
+      signalStrength: signalStrength,
+      rssiValue: rssiValue,
     );
   }
 
@@ -112,6 +129,11 @@ class SensorModel {
     final rawBarangay = (json['barangay'] ?? json['sensor_area'])?.toString();
     final barangayName = rawBarangay != null ? 'Brgy. $rawBarangay' : null;
 
+    final batteryLevel = _toIntOrNull(json['battery_level'] ?? json['battery']);
+    final signalStrength = _toIntOrNull(json['signal_strength'] ?? json['signal']);
+    final rssiValue = (json['rssi_value'] ?? json['rssi'])?.toString();
+    final isRising = json['is_rising'] == true;
+
     return SensorModel.ultrasonic(
       id: id,
       name: name,
@@ -125,8 +147,32 @@ class SensorModel {
       lastReadingAt: lastReadingAt,
       barangayId: barangayId,
       barangayName: barangayName,
+      batteryLevel: batteryLevel,
+      signalStrength: signalStrength,
+      rssiValue: rssiValue,
+      isRising: isRising,
     );
   }
+
+  // --- Ultrasonic & IoT Ranging Helper Getters ---
+
+  /// Water level converted to meters
+  double get waterLevelMeters => waterLevel * 0.3048;
+
+  /// Mounting height of the ultrasonic transducer from ground (2.40 m standard)
+  double get sensorMountHeightM => 2.40;
+
+  /// Mounting height in feet (7.874 ft)
+  double get sensorMountHeightFt => 2.40 / 0.3048;
+
+  /// Distance from the sensor underside to the water surface (Air gap in meters)
+  double get airGapMeters => (sensorMountHeightM - waterLevelMeters).clamp(0.0, sensorMountHeightM);
+
+  /// Air gap in feet
+  double get airGapFt => airGapMeters / 0.3048;
+
+  /// Active flood template for this sensor's current water level
+  FloodLevelTemplate get floodTemplate => FloodLevelTemplate.fromWaterLevel(waterLevel);
 
   static double _toDouble(dynamic value) {
     if (value is num) return value.toDouble();
@@ -138,6 +184,14 @@ class SensorModel {
     if (value == null) return null;
     if (value is num) return value.toDouble();
     if (value is String) return double.tryParse(value);
+    return null;
+  }
+
+  static int? _toIntOrNull(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    if (value is String) return int.tryParse(value);
     return null;
   }
 
@@ -157,9 +211,14 @@ class SensorModel {
 
   /// Derive a display status from water level in feet.
   static String _statusFromWaterLevelFt(double waterLevelFt) {
-    if (waterLevelFt >= 1.50) return 'Critical';
-    if (waterLevelFt >= 0.51) return 'Warning';
-    if (waterLevelFt >= 0.10) return 'Low Flood';
+    if (waterLevelFt >= 7.0) return 'Critical';
+    if (waterLevelFt >= 6.0) return 'Severe';
+    if (waterLevelFt >= 5.0) return 'Serious';
+    if (waterLevelFt >= 4.0) return 'Alert';
+    if (waterLevelFt >= 3.0) return 'Warning';
+    if (waterLevelFt >= 2.0) return 'Rising';
+    if (waterLevelFt >= 1.0) return 'Advisory';
     return 'No Flood';
   }
 }
+

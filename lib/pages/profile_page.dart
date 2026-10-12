@@ -3,6 +3,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../models/profile_model.dart';
 import '../services/profile_service.dart';
 import '../widgets/skeleton_loader.dart';
+import '../widgets/flood_height_diagram.dart';
 import 'subpages/edit_profile_page.dart';
 import 'subpages/my_reports_page.dart';
 import 'login.dart';
@@ -226,21 +227,56 @@ class _ProfilePageState extends State<ProfilePage> {
                 const SizedBox(height: 25),
 
                 // 3. PERSONAL ALERT THRESHOLD
-                const Text(
-                  "Personal Alert Threshold",
-                  style: TextStyle(
-                    color: Color(0xFF101C45),
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                    fontFamily: 'Poppins',
-                  ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      "Personal Alert Threshold",
+                      style: TextStyle(
+                        color: Color(0xFF101C45),
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                        fontFamily: 'Poppins',
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF101C45),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        "$_currentSliderValue ft",
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                          fontFamily: 'Poppins',
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 15),
+                const SizedBox(height: 12),
 
-                // SLIDER UI (Locked)
-                _buildThresholdSlider(),
+                // Animated Graph UI with water level animation
+                FloodHeightDiagram(
+                  waterLevelFt: _currentSliderValue.toDouble(),
+                  isThresholdMode: true,
+                  title: 'Personal Alert Threshold',
+                  subtitle: _currentSliderValue > 0
+                      ? 'SMS alert set for $_currentSliderValue ft'
+                      : 'Alerts disabled (0 ft)',
+                  margin: EdgeInsets.zero,
+                ),
 
-                const SizedBox(height: 40),
+                const SizedBox(height: 14),
+
+                // Summary info card
+                _buildThresholdSummaryCard(profile),
+
+                const SizedBox(height: 35),
 
                 // --- 4. VIEW ALL REPORTS BUTTON ---
                 SizedBox(
@@ -413,67 +449,88 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  // --- WIDGET: CUSTOM SLIDER (LOCKED) ---
-  Widget _buildThresholdSlider() {
+  // --- WIDGET: THRESHOLD SUMMARY CARD ---
+  Widget _buildThresholdSummaryCard(ProfileModel profile) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.grey[50],
-        border: Border.all(color: Colors.grey[300]!),
-        borderRadius: BorderRadius.circular(15),
+        color: const Color(0xFFF8FAFC),
+        border: Border.all(color: Colors.grey.shade300),
+        borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            "Current Alert Level: $_currentSliderValue ft",
-            style: const TextStyle(
-              color: Color(0xFF101C45),
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              fontFamily: 'Poppins',
-            ),
+          Row(
+            children: [
+              Icon(
+                _currentSliderValue > 0
+                    ? Icons.notifications_active_outlined
+                    : Icons.notifications_off_outlined,
+                color: const Color(0xFF101C45),
+                size: 20,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  _currentSliderValue > 0
+                      ? "Alert Active at $_currentSliderValue ft"
+                      : "Personal Alerts Disabled",
+                  style: const TextStyle(
+                    color: Color(0xFF101C45),
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    fontFamily: 'Poppins',
+                  ),
+                ),
+              ),
+              InkWell(
+                onTap: () async {
+                  final didUpdate = await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => EditProfilePage(profile: profile),
+                    ),
+                  );
+                  if (!mounted) return;
+                  if (didUpdate == true) {
+                    setState(() {
+                      _isSliderInitialized = false;
+                      _profileFuture = _profileService.fetchUserProfile();
+                    });
+                  }
+                },
+                borderRadius: BorderRadius.circular(10),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF101C45).withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Text(
+                    "Edit",
+                    style: TextStyle(
+                      color: Color(0xFF101C45),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                      fontFamily: 'Poppins',
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 10),
-          SliderTheme(
-            data: SliderTheme.of(context).copyWith(
-              activeTrackColor: const Color(0xFF101C45),
-              inactiveTrackColor: Colors.grey[300],
-              thumbColor: const Color(0xFF101C45),
-              overlayColor: const Color(0xFF101C45).withOpacity(0.2),
-              trackHeight: 8.0,
-              // The disabled colors are used when onChanged is null
-              disabledActiveTrackColor: const Color(
-                0xFF101C45,
-              ).withOpacity(0.6),
-              disabledInactiveTrackColor: Colors.grey[200],
-              disabledThumbColor: const Color(0xFF101C45).withOpacity(0.6),
-            ),
-            child: Slider(
-              value: _currentSliderValue.toDouble(),
-              min: 0,
-              max: 7,
-              divisions: 7,
-              label: "${_currentSliderValue}ft",
-              onChanged: null, // THIS LOCKS THE SLIDER ON THE VIEW PAGE!
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: List.generate(8, (index) {
-                return Text(
-                  "$index",
-                  style: TextStyle(
-                    color: _currentSliderValue == index
-                        ? const Color(0xFF101C45)
-                        : Colors.grey[500],
-                    fontWeight: _currentSliderValue == index
-                        ? FontWeight.bold
-                        : FontWeight.normal,
-                  ),
-                );
-              }),
+          Text(
+            _currentSliderValue > 0
+                ? "You will receive an automated SMS alert whenever flood waters in your barangay reach $_currentSliderValue ft (${(_currentSliderValue * 0.3048).toStringAsFixed(2)} m)."
+                : "Your personal alert threshold is currently set to 0 ft (disabled). You will not receive SMS alerts for water levels.",
+            style: TextStyle(
+              color: Colors.grey[600],
+              fontSize: 12,
+              height: 1.5,
+              fontFamily: 'Poppins',
             ),
           ),
         ],

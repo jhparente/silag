@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:http/http.dart' as http;
-import 'api_config.dart';
+// import 'package:http/http.dart' as http;
+// import 'api_config.dart';
 
 enum AppConnectivityStatus { online, noInternet, serverDown }
 
@@ -26,8 +26,8 @@ class ConnectivityService {
     _connectivitySub =
         _connectivity.onConnectivityChanged.listen(_onConnectivityChanged);
 
-    // Poll the backend every 10 s so we can detect server-down quickly
-    _pollTimer = Timer.periodic(const Duration(seconds: 10), (_) => _checkBackend());
+    // Server-down check disabled for now
+    // _pollTimer = Timer.periodic(const Duration(seconds: 10), (_) => _checkBackend());
 
     // Run immediately
     _checkAll();
@@ -52,9 +52,12 @@ class ConnectivityService {
       return;
     }
 
-    await _checkBackend();
+    // Server-down check disabled for now — report online if internet connection is present
+    _emit(AppConnectivityStatus.online);
   }
 
+  // Server-down check disabled for now
+  /*
   Future<void> _checkBackend() async {
     try {
       // Hit the root endpoint which is always public and lightweight
@@ -76,6 +79,7 @@ class ConnectivityService {
       }
     }
   }
+  */
 
   void _emit(AppConnectivityStatus status) {
     if (_current != status) {

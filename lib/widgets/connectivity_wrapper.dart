@@ -4,7 +4,7 @@ import '../services/connectivity_service.dart';
 
 /// Wraps any page and replaces it entirely when:
 ///   - There is no internet connection (shows animated skeleton-like screen)
-///   - The backend server is down (shows server-down screen with retry)
+///   - [Disabled for now] The backend server is down (shows server-down screen with retry)
 class ConnectivityWrapper extends StatefulWidget {
   final Widget child;
 
@@ -32,9 +32,12 @@ class _ConnectivityWrapperState extends State<ConnectivityWrapper> {
     if (_status == AppConnectivityStatus.noInternet) {
       return const _NoInternetScreen();
     }
+    // Server-down check disabled for now
+    /*
     if (_status == AppConnectivityStatus.serverDown) {
       return const _ServerDownScreen();
     }
+    */
     return widget.child;
   }
 }
@@ -157,7 +160,7 @@ class _ShimBlockState extends State<_ShimBlock>
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: _anim,
-      builder: (_, __) => Container(
+      builder: (_, child) => Container(
         height: widget.height,
         width: widget.width ?? double.infinity,
         decoration: BoxDecoration(
@@ -189,9 +192,10 @@ class _SlidingTransform extends GradientTransform {
 }
 
 // ---------------------------------------------------------------------------
-// Server-Down Screen — Only a Retry button is interactive
+// Server-Down Screen — Disabled for now
 // ---------------------------------------------------------------------------
 
+/*
 class _ServerDownScreen extends StatefulWidget {
   const _ServerDownScreen();
 
@@ -295,3 +299,4 @@ class _ServerDownScreenState extends State<_ServerDownScreen> {
     );
   }
 }
+*/

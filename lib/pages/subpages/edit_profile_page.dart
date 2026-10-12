@@ -6,6 +6,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../models/profile_model.dart';
 import '../../services/profile_service.dart';
+import '../../widgets/flood_height_diagram.dart';
 
 class EditProfilePage extends StatefulWidget {
   final ProfileModel profile;
@@ -308,30 +309,119 @@ class _EditProfilePageState extends State<EditProfilePage> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 15),
+                  const SizedBox(height: 12),
+
+                  // Animated Diagram displaying Personal Alert Threshold
+                  FloodHeightDiagram(
+                    waterLevelFt: _currentSliderValue.toDouble(),
+                    isThresholdMode: true,
+                    title: 'Personal Alert Threshold',
+                    subtitle: _currentSliderValue > 0
+                        ? 'Simulating alert trigger at $_currentSliderValue ft'
+                        : 'Alerts disabled (0 ft)',
+                    margin: EdgeInsets.zero,
+                  ),
+
+                  const SizedBox(height: 14),
 
                   // Active Slider Container
                   Container(
                     padding: const EdgeInsets.symmetric(
-                      vertical: 20,
-                      horizontal: 10,
+                      vertical: 18,
+                      horizontal: 14,
                     ),
                     decoration: BoxDecoration(
                       color: Colors.grey[50],
                       border: Border.all(color: Colors.grey[300]!),
-                      borderRadius: BorderRadius.circular(15),
+                      borderRadius: BorderRadius.circular(16),
                     ),
                     child: Column(
                       children: [
-                        Text(
-                          "$_currentSliderValue ft",
-                          style: const TextStyle(
-                            fontSize: 28,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF101C45),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              "Selected Threshold",
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF64748B),
+                                fontFamily: 'Poppins',
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF101C45),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Text(
+                                "$_currentSliderValue ft",
+                                style: const TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                  fontFamily: 'Poppins',
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+
+                        // Quick level chips (0 to 7)
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: List.generate(8, (index) {
+                              final isSelected = _currentSliderValue == index;
+                              return Padding(
+                                padding: const EdgeInsets.only(right: 6),
+                                child: InkWell(
+                                  onTap: () {
+                                    setState(() {
+                                      _currentSliderValue = index;
+                                    });
+                                  },
+                                  borderRadius: BorderRadius.circular(10),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 10, vertical: 6),
+                                    decoration: BoxDecoration(
+                                      color: isSelected
+                                          ? const Color(0xFF101C45)
+                                          : Colors.white,
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(
+                                        color: isSelected
+                                            ? const Color(0xFF101C45)
+                                            : Colors.grey.shade300,
+                                        width: isSelected ? 1.5 : 1.0,
+                                      ),
+                                    ),
+                                    child: Text(
+                                      index == 0 ? '0 ft · Off' : '$index ft',
+                                      style: TextStyle(
+                                        fontFamily: 'Poppins',
+                                        fontSize: 11,
+                                        fontWeight: isSelected
+                                            ? FontWeight.bold
+                                            : FontWeight.w500,
+                                        color: isSelected
+                                            ? Colors.white
+                                            : Colors.grey.shade700,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }),
                           ),
                         ),
+
                         const SizedBox(height: 10),
+
                         SliderTheme(
                           data: SliderTheme.of(context).copyWith(
                             activeTrackColor: const Color(0xFF101C45),
@@ -374,7 +464,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
                           ),
                         ),
                       ],
-                      ),
+                    ),
                   ),
 
                   const SizedBox(height: 14),

@@ -168,4 +168,25 @@ class SensorService {
       throw Exception('Failed to load hydrograph data');
     }
   }
+  Future<HydrographModel> fetchSensorHydrograph(String sensorId) async {
+    try {
+      final response = await http
+          .get(_buildUri('sensor_hydrograph/$sensorId', version: 'v1'))
+          .timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 200) {
+        final decoded = jsonDecode(response.body);
+        if (decoded['status'] == 'success' && decoded['data'] != null) {
+          return HydrographModel.fromJson(decoded['data'] as Map<String, dynamic>);
+        }
+      }
+      return fetchGlobalHydrograph();
+    } catch (_) {
+      try {
+        return await fetchGlobalHydrograph();
+      } catch (e) {
+        throw Exception('Failed to load sensor hydrograph data');
+      }
+    }
+  }
 }

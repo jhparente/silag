@@ -6,6 +6,7 @@ import 'package:latlong2/latlong.dart' hide Path;
 import 'package:silag/models/evacuation_model.dart';
 import 'package:silag/models/sensor_model.dart';
 import 'package:silag/widgets/sensor_pulse_marker.dart';
+import 'package:silag/pages/subpages/sensor_detail_page.dart';
 
 class SiteOverviewMapPage extends StatefulWidget {
   final List<EvacuationModel> sites;
@@ -204,17 +205,31 @@ class _SiteOverviewMapPageState extends State<SiteOverviewMapPage> {
                           point: LatLng(s.latitude!, s.longitude!),
                           width: 36,
                           height: 36,
-                          child: Tooltip(
-                            message: '${s.name}\n${s.waterLevel.toStringAsFixed(2)} ft',
-                            preferBelow: false,
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: col.withOpacity(0.9),
-                                shape: BoxShape.circle,
-                                border: Border.all(color: Colors.white, width: 1.5),
-                                boxShadow: [BoxShadow(color: col.withOpacity(0.5), blurRadius: 6)],
+                          child: GestureDetector(
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => SensorDetailPage(
+                                    sensor: s,
+                                    userLat: _userLocation?.latitude,
+                                    userLng: _userLocation?.longitude,
+                                  ),
+                                ),
+                              );
+                            },
+                            child: Tooltip(
+                              message: '${s.name}\n${s.waterLevel.toStringAsFixed(2)} ft (Tap to view)',
+                              preferBelow: false,
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: col.withOpacity(0.9),
+                                  shape: BoxShape.circle,
+                                  border: Border.all(color: Colors.white, width: 1.5),
+                                  boxShadow: [BoxShadow(color: col.withOpacity(0.5), blurRadius: 6)],
+                                ),
+                                child: const Icon(Icons.sensors, color: Colors.white, size: 16),
                               ),
-                              child: const Icon(Icons.sensors, color: Colors.white, size: 16),
                             ),
                           ),
                         );

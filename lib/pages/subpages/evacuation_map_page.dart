@@ -12,6 +12,7 @@ import 'package:silag/models/sensor_model.dart';
 import 'package:silag/services/api_config.dart';
 import 'package:silag/services/api_client.dart';
 import 'package:silag/widgets/sensor_pulse_marker.dart';
+import 'package:silag/pages/subpages/sensor_detail_page.dart';
 
 class RouteStep {
   final String instruction;
@@ -573,16 +574,30 @@ class _EvacuationMapPageState extends State<EvacuationMapPage>
                                       point: LatLng(s.latitude!, s.longitude!),
                                       width: 34,
                                       height: 34,
-                                      child: Tooltip(
-                                        message: '${s.name}\n${s.waterLevel.toStringAsFixed(2)} ft',
-                                        child: Container(
-                                          decoration: BoxDecoration(
-                                            color: col.withOpacity(0.85),
-                                            shape: BoxShape.circle,
-                                            border: Border.all(color: Colors.white, width: 1.5),
-                                            boxShadow: [BoxShadow(color: col.withOpacity(0.5), blurRadius: 6)],
+                                      child: GestureDetector(
+                                        onTap: () {
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (_) => SensorDetailPage(
+                                                sensor: s,
+                                                userLat: _userLocation?.latitude,
+                                                userLng: _userLocation?.longitude,
+                                              ),
+                                            ),
+                                          );
+                                        },
+                                        child: Tooltip(
+                                          message: '${s.name}\n${s.waterLevel.toStringAsFixed(2)} ft (Tap to view)',
+                                          child: Container(
+                                            decoration: BoxDecoration(
+                                              color: col.withOpacity(0.85),
+                                              shape: BoxShape.circle,
+                                              border: Border.all(color: Colors.white, width: 1.5),
+                                              boxShadow: [BoxShadow(color: col.withOpacity(0.5), blurRadius: 6)],
+                                            ),
+                                            child: const Icon(Icons.sensors, color: Colors.white, size: 14),
                                           ),
-                                          child: const Icon(Icons.sensors, color: Colors.white, size: 14),
                                         ),
                                       ),
                                     );

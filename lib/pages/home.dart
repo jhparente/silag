@@ -9,7 +9,7 @@ import 'package:silag/models/notification_model.dart';
 import 'package:silag/pages/profile_page.dart';
 import 'package:silag/pages/subpages/notifications_page.dart';
 import 'package:silag/pages/subpages/all_sensors_page.dart';
-import 'package:silag/pages/report.dart';
+import 'package:silag/pages/subpages/sensor_detail_page.dart';
 import 'package:silag/pages/subpages/create_report.dart';
 import 'package:silag/pages/safety.dart';
 import 'package:silag/services/evacuation_request_service.dart';
@@ -20,8 +20,6 @@ import 'package:silag/services/sensor_service.dart';
 import 'package:silag/services/weather_service.dart';
 import 'package:silag/models/weather_model.dart';
 import 'package:silag/models/sensor_model.dart';
-import 'package:silag/models/hydrograph_model.dart';
-import 'package:silag/widgets/flood_forecast_chart.dart';
 import 'package:silag/widgets/skeleton_loader.dart';
 import 'dart:math' as math;
 
@@ -41,7 +39,6 @@ class _HomePageState extends State<HomePage> {
 
   late Future<WeatherModel> _weatherFuture;
   late Future<List<SensorModel>> _sensorsFuture;
-  late Future<HydrographModel> _hydrographFuture;
   List<NotificationModel> _notifications = [];
   List<SensorModel> _cachedSensors = [];
   int get _unreadCount => _notifications.where((n) => !n.isReadLocally).length;
@@ -67,7 +64,6 @@ class _HomePageState extends State<HomePage> {
       _cachedSensors = s;
       return s;
     });
-    _hydrographFuture = _sensorService.fetchGlobalHydrograph();
     _startAutoRefresh();
     _loadNotifications();
     _loadBarangay();
@@ -161,7 +157,6 @@ class _HomePageState extends State<HomePage> {
             _cachedSensors = s;
             return s;
           });
-          _hydrographFuture = _sensorService.fetchGlobalHydrograph();
         });
       }
     });
@@ -181,7 +176,6 @@ class _HomePageState extends State<HomePage> {
         _cachedSensors = s;
         return s;
       });
-      _hydrographFuture = _sensorService.fetchGlobalHydrograph();
     });
     // Also refresh location
     _userLat = null;
@@ -189,7 +183,6 @@ class _HomePageState extends State<HomePage> {
     await Future.wait([
       _weatherFuture,
       _sensorsFuture,
-      _hydrographFuture,
       _ensureUserLocation(request: false),
     ]);
   }
@@ -317,39 +310,7 @@ class _HomePageState extends State<HomePage> {
                 },
               ),
 
-              const SizedBox(height: 40),
 
-              // --- FLOOD FORECAST SECTION ---
-              const Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  "Graphical Flood Forecast",
-                  style: TextStyle(
-                    fontFamily: 'Poppins',
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF101C45),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 5),
-
-              FutureBuilder<HydrographModel>(
-                future: _hydrographFuture,
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const SizedBox(
-                      height: 250,
-                      child: Center(child: CircularProgressIndicator()),
-                    );
-                  }
-                  if (snapshot.hasError || !snapshot.hasData) {
-                    return const SizedBox.shrink();
-                  }
-
-                  return FloodForecastChart(hydrograph: snapshot.data!);
-                },
-              ),
             ],
           ),
         ),
@@ -367,9 +328,7 @@ class _HomePageState extends State<HomePage> {
   ///   ≥ 5 ft  : Extreme     (#9C27B0)
   ///   ≥ 6 ft  : Dangerous   (#311B92)
   ///   ≥ 7 ft  : Catastrophic(#121212)
-  Color _sensorPrimaryColor(SensorModel sensor) {
-    return _colorFromLevel(sensor.waterLevel);
-  }
+
 
   // ── Apply sensor home filter (Closest 5 / Barangay 5) ──────────────
   List<SensorModel> _applyHomeFilter(List<SensorModel> all) {
@@ -733,234 +692,19 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _showSensorDetails(SensorModel sensor) {
-    final statusColor = _sensorPrimaryColor(sensor);
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-            child: Container(
-              padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
-              decoration: BoxDecoration(
-                color: const Color(0xFF101C45),
-                borderRadius: BorderRadius.circular(24),
-                boxShadow: [
-                  BoxShadow(
-                    color: statusColor.withOpacity(0.25),
-                    blurRadius: 22,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
-              ),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Center(
-                      child: Container(
-                        width: 44,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: Colors.white24,
-                          borderRadius: BorderRadius.circular(100),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: statusColor.withOpacity(0.15),
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          child: Icon(
-                            Icons.sensors,
-                            color: statusColor,
-                            size: 24,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                sensor.name,
-                                style: const TextStyle(
-                                  fontFamily: 'Poppins',
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 16,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                sensor.location,
-                                style: const TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 12,
-                                  fontFamily: 'Poppins',
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 18),
-                    _buildSensorDetailTile(
-                      label: 'Sensor ID',
-                      value: sensor.id.isEmpty ? 'N/A' : sensor.id,
-                    ),
-                    _buildSensorDetailTileWithColor(
-                      label: 'Sensor Active',
-                      value: sensor.isActive ? 'Active' : 'Inactive',
-                      valueColor: sensor.isActive ? Colors.greenAccent : Colors.redAccent,
-                    ),
-                    _buildSensorDetailTile(
-                      label: 'Status',
-                      value: sensor.status,
-                    ),
-                    _buildSensorDetailTile(
-                      label: 'Current Water Level',
-                      value: '${sensor.waterLevel.toStringAsFixed(2)} ft',
-                    ),
-                    _buildSensorDetailTile(
-                      label: 'Warning Threshold',
-                      value: '${(sensor.normalThresholdFt ?? 0.51).toStringAsFixed(2)} ft',
-                    ),
-                    _buildSensorDetailTile(
-                      label: 'Critical Threshold',
-                      value: '${(sensor.criticalThresholdFt ?? 1.50).toStringAsFixed(2)} ft',
-                    ),
-                    _buildSensorDetailTile(
-                      label: 'Last Updated',
-                      value: sensor.lastReadingAt != null
-                          ? DateFormat('MMM d, y - h:mm a').format(sensor.lastReadingAt!.toLocal())
-                          : 'No data',
-                    ),
-                    const SizedBox(height: 14),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: () => Navigator.pop(context),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: statusColor.withOpacity(0.18),
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: const Text(
-                          'Close',
-                          style: TextStyle(fontFamily: 'Poppins'),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildSensorDetailTile({
-    required String label,
-    required String value,
-  }) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: const Color(0xFF16224A),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white10),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            flex: 4,
-            child: Text(
-              label,
-              style: const TextStyle(
-                color: Colors.white70,
-                fontSize: 12,
-                fontFamily: 'Poppins',
-              ),
-            ),
-          ),
-          Expanded(
-            flex: 5,
-            child: Text(
-              value,
-              textAlign: TextAlign.right,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                fontFamily: 'Poppins',
-              ),
-            ),
-          ),
-        ],
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SensorDetailPage(
+          sensor: sensor,
+          userLat: _userLat,
+          userLng: _userLng,
+        ),
       ),
     );
   }
 
-  Widget _buildSensorDetailTileWithColor({
-    required String label,
-    required String value,
-    required Color valueColor,
-  }) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: const Color(0xFF16224A),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white10),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            flex: 4,
-            child: Text(
-              label,
-              style: const TextStyle(
-                color: Colors.white70,
-                fontSize: 12,
-                fontFamily: 'Poppins',
-              ),
-            ),
-          ),
-          Expanded(
-            flex: 5,
-            child: Text(
-              value,
-              textAlign: TextAlign.right,
-              style: TextStyle(
-                color: valueColor,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                fontFamily: 'Poppins',
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+
 
   // Sensor Card
   Widget _buildSensorCard(SensorModel sensor) {

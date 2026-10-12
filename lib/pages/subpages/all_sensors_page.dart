@@ -2,8 +2,8 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:intl/intl.dart';
 import 'package:silag/models/sensor_model.dart';
+import 'package:silag/pages/subpages/sensor_detail_page.dart';
 
 // ─────────────────────────────────────────────────────────────
 // Sensor filter mode
@@ -601,199 +601,19 @@ class _AllSensorsPageState extends State<AllSensorsPage> {
 
   // ── Sensor detail bottom sheet ────────────────────────────
   void _showSensorDetail(SensorModel sensor) {
-    final statusColor = _colorFromLevel(sensor.waterLevel);
-    final dist        = _distanceTo(sensor);
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          child: Container(
-            padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
-            decoration: BoxDecoration(
-              color: const Color(0xFF101C45),
-              borderRadius: BorderRadius.circular(24),
-              boxShadow: [
-                BoxShadow(
-                  color: statusColor.withOpacity(0.25),
-                  blurRadius: 22,
-                  offset: const Offset(0, 8),
-                ),
-              ],
-            ),
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 44,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: Colors.white24,
-                        borderRadius: BorderRadius.circular(100),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          color: statusColor.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: Icon(Icons.sensors,
-                            color: statusColor, size: 22),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              sensor.name,
-                              style: const TextStyle(
-                                fontFamily: 'Poppins',
-                                color: Colors.white,
-                                fontWeight: FontWeight.w600,
-                                fontSize: 15,
-                              ),
-                            ),
-                            Text(
-                              sensor.location,
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 12,
-                                fontFamily: 'Poppins',
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  _detailTile(
-                      'Sensor ID', sensor.id.isEmpty ? 'N/A' : sensor.id),
-                  _detailTileColored(
-                    'Sensor Active',
-                    sensor.isActive ? 'Active' : 'Inactive',
-                    sensor.isActive ? Colors.greenAccent : Colors.redAccent,
-                  ),
-                  _detailTile('Status', sensor.status),
-                  _detailTile('Water Level',
-                      '${sensor.waterLevel.toStringAsFixed(2)} ft'),
-                  _detailTile('Warning Threshold',
-                      '${(sensor.normalThresholdFt ?? 0.51).toStringAsFixed(2)} ft'),
-                  _detailTile('Critical Threshold',
-                      '${(sensor.criticalThresholdFt ?? 1.50).toStringAsFixed(2)} ft'),
-                  if (dist != null)
-                    _detailTile('Distance from You', _formatDist(dist)),
-                  _detailTile(
-                    'Last Updated',
-                    sensor.lastReadingAt != null
-                        ? DateFormat('MMM d, y – h:mm a')
-                            .format(sensor.lastReadingAt!.toLocal())
-                        : 'No data',
-                  ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: () => Navigator.pop(context),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: statusColor.withOpacity(0.18),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12)),
-                      ),
-                      child: const Text('Close',
-                          style: TextStyle(fontFamily: 'Poppins')),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SensorDetailPage(
+          sensor: sensor,
+          userLat: _lat,
+          userLng: _lng,
         ),
       ),
     );
   }
 
-  Widget _detailTile(String label, String value) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-      decoration: BoxDecoration(
-        color: const Color(0xFF16224A),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white10),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            flex: 4,
-            child: Text(label,
-                style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 12,
-                    fontFamily: 'Poppins')),
-          ),
-          Expanded(
-            flex: 5,
-            child: Text(value,
-                textAlign: TextAlign.right,
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    fontFamily: 'Poppins')),
-          ),
-        ],
-      ),
-    );
-  }
 
-  Widget _detailTileColored(String label, String value, Color color) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-      decoration: BoxDecoration(
-        color: const Color(0xFF16224A),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white10),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            flex: 4,
-            child: Text(label,
-                style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 12,
-                    fontFamily: 'Poppins')),
-          ),
-          Expanded(
-            flex: 5,
-            child: Text(value,
-                textAlign: TextAlign.right,
-                style: TextStyle(
-                    color: color,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    fontFamily: 'Poppins')),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 // ─── Mini neon ring ───────────────────────────────────────────
