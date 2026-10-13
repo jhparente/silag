@@ -5,7 +5,6 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart' hide Path;
 import 'package:silag/models/evacuation_model.dart';
 import 'package:silag/models/sensor_model.dart';
@@ -13,6 +12,7 @@ import 'package:silag/services/api_config.dart';
 import 'package:silag/services/api_client.dart';
 import 'package:silag/widgets/sensor_pulse_marker.dart';
 import 'package:silag/pages/subpages/sensor_detail_page.dart';
+import 'package:silag/models/flood_level_template.dart';
 
 class RouteStep {
   final String instruction;
@@ -362,14 +362,14 @@ class _EvacuationMapPageState extends State<EvacuationMapPage>
   double _deg2rad(double deg) => deg * (math.pi / 180);
 
   static Color _sensorColor(double wl) {
-    if (wl >= 7.0) return const Color(0xFF121212);
-    if (wl >= 6.0) return const Color(0xFF311B92);
-    if (wl >= 5.0) return const Color(0xFF9C27B0);
-    if (wl >= 4.0) return const Color(0xFFB71C1C);
-    if (wl >= 3.0) return const Color(0xFFF44336);
-    if (wl >= 2.0) return const Color(0xFFFF9800);
-    if (wl >= 1.0) return const Color(0xFFFFC107);
-    return Colors.greenAccent;
+    if (wl >= 7.0) return FloodLevelTemplate.level7.waterColor; // Level 7: Catastrophic (0xFF121212)
+    if (wl >= 6.0) return FloodLevelTemplate.level6.waterColor; // Level 6: Dangerous (0xFF311B92)
+    if (wl >= 5.0) return FloodLevelTemplate.level5.waterColor; // Level 5: Extreme (0xFF9C27B0)
+    if (wl >= 4.0) return FloodLevelTemplate.level4.waterColor; // Level 4: Severe (0xFFB71C1C)
+    if (wl >= 3.0) return FloodLevelTemplate.level3.waterColor; // Level 3: Critical (0xFFF44336)
+    if (wl >= 2.0) return FloodLevelTemplate.level2.waterColor; // Level 2: High (0xFFFF9800)
+    if (wl >= 1.0) return FloodLevelTemplate.level1.waterColor; // Level 1: Low (0xFFFFC107)
+    return FloodLevelTemplate.level0.waterColor;                 // Safe / Normal Baseline (< 1.00 ft, 0xFF00E676)
   }
 
   String _formatDistance(double km) {
@@ -570,6 +570,7 @@ class _EvacuationMapPageState extends State<EvacuationMapPage>
                                   .where((s) => s.latitude != null && s.longitude != null)
                                   .map((s) {
                                     final col = _sensorColor(s.waterLevel);
+                                    final template = s.floodTemplate;
                                     return Marker(
                                       point: LatLng(s.latitude!, s.longitude!),
                                       width: 34,
@@ -588,15 +589,27 @@ class _EvacuationMapPageState extends State<EvacuationMapPage>
                                           );
                                         },
                                         child: Tooltip(
-                                          message: '${s.name}\n${s.waterLevel.toStringAsFixed(2)} ft (Tap to view)',
+                                          message: '${s.name}\n${s.waterLevel.toStringAsFixed(2)} ft · ${template.name} (Tap to view)',
                                           child: Container(
                                             decoration: BoxDecoration(
-                                              color: col.withOpacity(0.85),
+                                              color: col.withOpacity(0.92),
                                               shape: BoxShape.circle,
-                                              border: Border.all(color: Colors.white, width: 1.5),
+                                              border: Border.all(color: Colors.white, width: 1.8),
                                               boxShadow: [BoxShadow(color: col.withOpacity(0.5), blurRadius: 6)],
                                             ),
-                                            child: const Icon(Icons.sensors, color: Colors.white, size: 14),
+                                            child: Center(
+                                              child: template.level > 0
+                                                  ? Text(
+                                                      'L${template.level}',
+                                                      style: TextStyle(
+                                                        color: template.level == 1 ? const Color(0xFF101C45) : Colors.white,
+                                                        fontFamily: 'Poppins',
+                                                        fontWeight: FontWeight.bold,
+                                                        fontSize: 10.5,
+                                                      ),
+                                                    )
+                                                  : const Icon(Icons.sensors, color: Colors.white, size: 14),
+                                            ),
                                           ),
                                         ),
                                       ),
