@@ -41,7 +41,7 @@ class _MainScreenState extends State<MainScreen> {
       if (type == 'account_banned') {
         AuthService().logout().then((_) {
           ApiClient.navigatorKey.currentState?.pushNamedAndRemoveUntil(
-            '/login',
+            '/landing',
             (_) => false,
             arguments: 'Account is banned. Contact the admin.',
           );

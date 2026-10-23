@@ -49,6 +49,8 @@ dependencies:
   latlong2: ^0.9.1
   connectivity_plus: ^6.1.4
   fl_chart: ^1.2.0
+  video_player: ^2.9.2
+  chewie: ^1.10.0
 
 dev_dependencies:
   flutter_test:

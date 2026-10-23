@@ -74,7 +74,7 @@ class ApiClient {
     if (navigator == null) return;
 
     navigator.pushNamedAndRemoveUntil(
-      '/login',
+      '/landing',
       (_) => false,
       arguments: reason,
     );

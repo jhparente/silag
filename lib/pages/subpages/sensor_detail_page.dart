@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
+import 'package:silag/models/cctv_model.dart';
 import 'package:silag/models/flood_level_template.dart';
 import 'package:silag/models/sensor_model.dart';
 import 'package:silag/pages/subpages/site_overview_map_page.dart';
@@ -10,6 +11,7 @@ import 'package:silag/models/hydrograph_model.dart';
 import 'package:silag/services/sensor_service.dart';
 import 'package:silag/widgets/flood_forecast_chart.dart';
 import 'package:silag/widgets/flood_height_diagram.dart';
+import 'package:silag/widgets/sensor_camera_tab.dart';
 
 /// Full-screen IoT Sensor Detail page that replaces the modal bottom sheet.
 /// Integrates physical ultrasonic ranging visualization, human reference comparison,
@@ -30,23 +32,33 @@ class SensorDetailPage extends StatefulWidget {
   State<SensorDetailPage> createState() => _SensorDetailPageState();
 }
 
-class _SensorDetailPageState extends State<SensorDetailPage> {
+class _SensorDetailPageState extends State<SensorDetailPage>
+    with TickerProviderStateMixin {
   late SensorModel _sensor;
   late Future<HydrographModel> _hydrographFuture;
+  late Future<SensorCctvResponse> _cctvFuture;
   bool _isRefreshing = false;
   double? _userLat;
   double? _userLng;
+  TabController? _tabController;
 
   @override
   void initState() {
     super.initState();
     _sensor = widget.sensor;
     _hydrographFuture = SensorService().fetchSensorHydrograph(widget.sensor.id);
+    _cctvFuture = SensorService().fetchSensorCctv(widget.sensor.id);
     _userLat = widget.userLat;
     _userLng = widget.userLng;
     if (_userLat == null || _userLng == null) {
       _fetchUserLocation();
     }
+  }
+
+  @override
+  void dispose() {
+    _tabController?.dispose();
+    super.dispose();
   }
 
   Future<void> _fetchUserLocation() async {
@@ -133,112 +145,185 @@ class _SensorDetailPageState extends State<SensorDetailPage> {
     final activeWaterLevel = _sensor.waterLevel;
     final template = FloodLevelTemplate.fromWaterLevel(activeWaterLevel);
 
-    return Scaffold(
-      backgroundColor: const Color(0xFF070D1E),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF0A1227),
-        elevation: 0,
-        centerTitle: true,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded,
-              color: Colors.white, size: 18),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Column(
-          children: [
-            Text(
-              _sensor.name,
-              style: const TextStyle(
-                fontFamily: 'Poppins',
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-                color: Colors.white,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+    return FutureBuilder<SensorCctvResponse>(
+      future: _cctvFuture,
+      builder: (context, cctvSnapshot) {
+        final cctvReady =
+            cctvSnapshot.connectionState == ConnectionState.done;
+        final hasCctv = cctvReady &&
+            cctvSnapshot.data?.cctvConfig.cctvEnabled == true;
+
+        // Build or rebuild the TabController only when CCTV status is known
+        final tabCount = hasCctv ? 2 : 1;
+        if (_tabController == null ||
+            _tabController!.length != tabCount) {
+          _tabController?.dispose();
+          _tabController =
+              TabController(length: tabCount, vsync: this);
+        }
+
+        return Scaffold(
+          backgroundColor: const Color(0xFF070D1E),
+          appBar: AppBar(
+            backgroundColor: const Color(0xFF0A1227),
+            elevation: 0,
+            centerTitle: true,
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back_ios_new_rounded,
+                  color: Colors.white, size: 18),
+              onPressed: () => Navigator.pop(context),
             ),
-            Text(
-              _sensor.barangayName ?? _sensor.location,
-              style: TextStyle(
-                fontFamily: 'Poppins',
-                fontSize: 11,
-                color: Colors.white.withOpacity(0.65),
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+            title: Column(
+              children: [
+                Text(
+                  _sensor.name,
+                  style: const TextStyle(
+                    fontFamily: 'Poppins',
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: Colors.white,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  _sensor.barangayName ?? _sensor.location,
+                  style: TextStyle(
+                    fontFamily: 'Poppins',
+                    fontSize: 11,
+                    color: Colors.white.withOpacity(0.65),
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
             ),
-          ],
-        ),
-        actions: [
-          IconButton(
-            icon: _isRefreshing
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
-                    ),
-                  )
-                : const Icon(Icons.refresh_rounded, color: Colors.white),
-            tooltip: 'Refresh Telemetry',
-            onPressed: _refreshSensorData,
-          ),
-          const SizedBox(width: 4),
-        ],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1),
-          child: Container(
-            color: template.textColorDark.withOpacity(0.2),
-            height: 1,
-          ),
-        ),
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.only(bottom: 30),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const SizedBox(height: 8),
-
-              // ── 1. HARDWARE STATUS HEADER STRIP ───────────────────────
-              _buildIoTStatusStrip(template),
-
-              // ── 2. ANIMATED FLOOD HEIGHT DIAGRAM (Live Sensor Reading) ──
-              FloodHeightDiagram(
-                waterLevelFt: activeWaterLevel,
-                sensorName: _sensor.name,
-                isActive: _sensor.isActive,
+            actions: [
+              IconButton(
+                icon: _isRefreshing
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.refresh_rounded, color: Colors.white),
+                tooltip: 'Refresh Telemetry',
+                onPressed: _refreshSensorData,
               ),
-
-              const SizedBox(height: 14),
-
-              // ── 3. FLOOD WATER ALERT DIRECTIVE & THRESHOLDS ───────────
-              _buildFloodTemplateDirectiveCard(template, activeWaterLevel),
-
-              const SizedBox(height: 14),
-
-              // ── 4. GRAPHICAL FLOOD FORECAST & HYDROGRAPH ─────────────
-              _buildGraphicalFloodForecastCard(template),
-
-              const SizedBox(height: 14),
-
-              // ── 5. IOT NODE HARDWARE & DIAGNOSTICS ───────────────────
-              _buildIoTHardwareLinkCard(template),
-
-              const SizedBox(height: 14),
-
-              // ── 6. GEOSPATIAL & SITE POSITION CARD ────────────────────
-              _buildGeospatialCard(),
-
-              const SizedBox(height: 18),
-
-              // ── 7. PRIMARY ACTION BUTTONS ─────────────────────────────
-              _buildActionButtons(context),
+              const SizedBox(width: 4),
             ],
+            bottom: hasCctv
+                ? TabBar(
+                    controller: _tabController,
+                    labelColor: Colors.white,
+                    unselectedLabelColor: Colors.white54,
+                    labelStyle: const TextStyle(
+                      fontFamily: 'Poppins',
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    unselectedLabelStyle: const TextStyle(
+                      fontFamily: 'Poppins',
+                      fontSize: 13,
+                    ),
+                    indicator: BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(
+                          color: template.textColorDark,
+                          width: 2.5,
+                        ),
+                      ),
+                    ),
+                    tabs: const [
+                      Tab(
+                        icon: Icon(Icons.bar_chart_rounded, size: 18),
+                        text: 'Overview',
+                      ),
+                      Tab(
+                        icon: Icon(Icons.videocam_rounded, size: 18),
+                        text: 'Live Camera',
+                      ),
+                    ],
+                  )
+                : PreferredSize(
+                    preferredSize: const Size.fromHeight(1),
+                    child: Container(
+                      color: template.textColorDark.withOpacity(0.2),
+                      height: 1,
+                    ),
+                  ),
           ),
-        ),
+          body: SafeArea(
+            child: hasCctv
+                ? TabBarView(
+                    controller: _tabController,
+                    children: [
+                      // Tab 1: Overview (existing scroll content)
+                      _buildOverviewContent(template, activeWaterLevel),
+
+                      // Tab 2: Live Camera
+                      SensorCameraTab(
+                        sensorId: _sensor.id,
+                        cctvConfig:
+                            cctvSnapshot.data!.cctvConfig,
+                      ),
+                    ],
+                  )
+                : _buildOverviewContent(template, activeWaterLevel),
+          ),
+        );
+      },
+    );
+  }
+
+  // ── Overview tab content (same as the original body) ──────────
+  Widget _buildOverviewContent(
+      FloodLevelTemplate template, double activeWaterLevel) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.only(bottom: 30),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const SizedBox(height: 8),
+
+          // ── 1. HARDWARE STATUS HEADER STRIP ───────────────────────
+          _buildIoTStatusStrip(template),
+
+          // ── 2. ANIMATED FLOOD HEIGHT DIAGRAM (Live Sensor Reading) ──
+          FloodHeightDiagram(
+            waterLevelFt: activeWaterLevel,
+            sensorName: _sensor.name,
+            isActive: _sensor.isActive,
+          ),
+
+          const SizedBox(height: 14),
+
+          // ── 3. FLOOD WATER ALERT DIRECTIVE & THRESHOLDS ───────────
+          _buildFloodTemplateDirectiveCard(template, activeWaterLevel),
+
+          const SizedBox(height: 14),
+
+          // ── 4. GRAPHICAL FLOOD FORECAST & HYDROGRAPH ─────────────
+          _buildGraphicalFloodForecastCard(template),
+
+          const SizedBox(height: 14),
+
+          // ── 5. IOT NODE HARDWARE & DIAGNOSTICS ───────────────────
+          _buildIoTHardwareLinkCard(template),
+
+          const SizedBox(height: 14),
+
+          // ── 6. GEOSPATIAL & SITE POSITION CARD ────────────────────
+          _buildGeospatialCard(),
+
+          const SizedBox(height: 18),
+
+          // ── 7. PRIMARY ACTION BUTTONS ─────────────────────────────
+          _buildActionButtons(context),
+        ],
       ),
     );
   }

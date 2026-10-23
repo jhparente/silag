@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:silag/main_screen.dart';
 import '../services/auth_service.dart';
+import '../widgets/sensor_hero.dart';
+import 'login.dart';
 
 // ---------------------------------------------------------------------------
 // Signup — 3-step flow:
@@ -351,33 +353,33 @@ class _SignupState extends State<Signup> with SingleTickerProviderStateMixin {
   // ============================================================
   Widget _buildStep1() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
+      padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Logo
-          Image.asset('icons/SILAG LOGO - 1 - Edited.png', height: 72, width: 72),
-          const SizedBox(height: 16),
+          // Sensor Hero
+          const SensorHero(size: 58),
+          const SizedBox(height: 12),
 
           const Text(
             'Create Account',
             textAlign: TextAlign.center,
             style: TextStyle(
-              fontSize: 28, fontWeight: FontWeight.bold,
+              fontSize: 22, fontWeight: FontWeight.bold,
               color: Color(0xFF101C45), fontFamily: 'Poppins',
             ),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 4),
           Text(
             'Join your community dashboard',
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 14, color: Colors.grey[600], fontFamily: 'Poppins'),
+            style: TextStyle(fontSize: 13, color: Colors.grey[600], fontFamily: 'Poppins'),
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 20),
 
           // Step indicator
           _buildStepIndicator(1),
-          const SizedBox(height: 28),
+          const SizedBox(height: 20),
 
           // Username
           _buildLabel('Username'),
@@ -508,6 +510,39 @@ class _SignupState extends State<Signup> with SingleTickerProviderStateMixin {
                     ),
             ),
           ),
+          const SizedBox(height: 20),
+
+          // Already have an account prompt
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                "Already have an account? ",
+                style: TextStyle(
+                  color: Colors.grey[600],
+                  fontFamily: 'Poppins',
+                  fontSize: 14,
+                ),
+              ),
+              GestureDetector(
+                onTap: () {
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(builder: (context) => const Login()),
+                  );
+                },
+                child: const Text(
+                  "Log In",
+                  style: TextStyle(
+                    color: Color(0xFF101C45),
+                    fontWeight: FontWeight.bold,
+                    fontFamily: 'Poppins',
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 24),
         ],
       ),
@@ -524,26 +559,26 @@ class _SignupState extends State<Signup> with SingleTickerProviderStateMixin {
         : '+63 $mobileDigits';
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
+      padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Image.asset('icons/SILAG LOGO - 1 - Edited.png', height: 72, width: 72),
-          const SizedBox(height: 16),
+          const SensorHero(size: 58),
+          const SizedBox(height: 12),
 
           const Text(
             'Verify Your Number',
             textAlign: TextAlign.center,
             style: TextStyle(
-              fontSize: 26, fontWeight: FontWeight.bold,
+              fontSize: 22, fontWeight: FontWeight.bold,
               color: Color(0xFF101C45), fontFamily: 'Poppins',
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           RichText(
             textAlign: TextAlign.center,
             text: TextSpan(
-              style: TextStyle(fontSize: 14, color: Colors.grey[600], fontFamily: 'Poppins'),
+              style: TextStyle(fontSize: 13, color: Colors.grey[600], fontFamily: 'Poppins'),
               children: [
                 const TextSpan(text: 'We sent a 6-digit code to\n'),
                 TextSpan(

@@ -6,7 +6,7 @@ import '../widgets/skeleton_loader.dart';
 import '../widgets/flood_height_diagram.dart';
 import 'subpages/edit_profile_page.dart';
 import 'subpages/my_reports_page.dart';
-import 'login.dart';
+import 'landing_page.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -89,9 +89,9 @@ class _ProfilePageState extends State<ProfilePage> {
         await storage.deleteAll();
 
         if (mounted) {
-          // Redirect to Login Page and destroy the navigation history so they can't swipe back
+          // Redirect to Landing Page and destroy the navigation history so they can't swipe back
           Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(builder: (context) => const Login()),
+            MaterialPageRoute(builder: (context) => const LandingPage()),
             (route) => false,
           );
         }

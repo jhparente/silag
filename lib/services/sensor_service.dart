@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:silag/models/sensor_model.dart';
 import 'package:silag/models/hydrograph_model.dart';
+import 'package:silag/models/cctv_model.dart';
 import 'package:silag/services/api_config.dart';
 
 class SensorService {
@@ -120,6 +121,34 @@ class SensorService {
       } catch (e) {
         throw Exception('Failed to load sensor hydrograph data');
       }
+    }
+  }
+
+  /// Fetches the CCTV camera configuration for a specific sensor.
+  /// Returns [SensorCctvResponse] with cctvConfig.cctvEnabled == false
+  /// if the sensor has no camera configured or fetch fails.
+  Future<SensorCctvResponse> fetchSensorCctv(String sensorId) async {
+    try {
+      final response = await http
+          .get(_buildUri('sensors/$sensorId/cctv', version: 'v1'))
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+        if (decoded['status'] == 'success' && decoded['data'] != null) {
+          return SensorCctvResponse.fromJson(
+              decoded['data'] as Map<String, dynamic>);
+        }
+      }
+      return SensorCctvResponse(
+        sensorId: sensorId,
+        cctvConfig: CctvConfig.disabled(),
+      );
+    } catch (_) {
+      return SensorCctvResponse(
+        sensorId: sensorId,
+        cctvConfig: CctvConfig.disabled(),
+      );
     }
   }
 }

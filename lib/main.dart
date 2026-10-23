@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:silag/firebase_options.dart';
 import 'package:silag/main_screen.dart';
 import 'pages/login.dart';
+import 'pages/signup.dart';
+import 'pages/landing_page.dart';
 import 'services/auth_service.dart';
 import 'services/api_client.dart';
 import 'services/ban_check_service.dart';
@@ -43,14 +45,19 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(fontFamily: 'Poppins'),
 
       // Use ApiClient.navigatorKey — this is the SAME key ApiClient uses
-      // internally to call pushNamedAndRemoveUntil('/login').
+      // internally to call pushNamedAndRemoveUntil('/landing').
       navigatorKey: ApiClient.navigatorKey,
 
       routes: {
+        '/landing': (context) {
+          final reason = ModalRoute.of(context)?.settings.arguments as String?;
+          return LandingPage(initialErrorMessage: reason);
+        },
         '/login': (context) {
           final reason = ModalRoute.of(context)?.settings.arguments as String?;
           return Login(initialErrorMessage: reason);
         },
+        '/signup': (context) => const Signup(),
         '/home': (context) => const ConnectivityWrapper(child: MainScreen()),
       },
 
@@ -72,7 +79,7 @@ class MyApp extends StatelessWidget {
             return const ConnectivityWrapper(child: MainScreen());
           }
 
-          return const Login();
+          return const LandingPage();
         },
       ),
     );

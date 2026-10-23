@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:silag/main_screen.dart'; // Import your MainScreen here
 import '../services/auth_service.dart';
+import '../widgets/sensor_hero.dart';
 import 'signup.dart';
 import 'forgot_password.dart';
 
@@ -50,6 +51,13 @@ class _LoginState extends State<Login> {
         );
       });
     }
+  }
+
+  void _goToSignup() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const Signup()),
+    );
   }
 
   // --- LOGIN LOGIC ---
@@ -127,44 +135,50 @@ class _LoginState extends State<Login> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
+      appBar: Navigator.canPop(context)
+          ? AppBar(
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back, color: Color(0xFF101C45)),
+                onPressed: () => Navigator.pop(context),
+              ),
+            )
+          : null,
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24.0),
+            padding: const EdgeInsets.fromLTRB(24.0, 16.0, 24.0, 24.0),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // --- LOGO OR ICON ---
-                Image.asset(
-                  'icons/SILAG LOGO - 1 - Edited.png',
-                  height: 90,
-                  width: 90,
-                ),
-                const SizedBox(height: 20),
+                // --- ANIMATED SENSOR HERO ---
+                const SensorHero(size: 80),
+                const SizedBox(height: 16),
 
-                // --- HEADER TEXT ---
+                // --- WELCOME SUB-HEADING ---
                 const Text(
                   "Welcome Back",
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    fontSize: 28,
+                    fontSize: 20,
                     fontWeight: FontWeight.bold,
                     color: Color(0xFF101C45),
                     fontFamily: 'Poppins',
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 4),
                 Text(
                   "Sign in to access your community dashboard",
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey[600],
+                    fontSize: 12.5,
+                    color: Colors.grey[500],
                     fontFamily: 'Poppins',
                   ),
                 ),
-                const SizedBox(height: 40),
+                const SizedBox(height: 24),
 
                 // --- MOBILE NUMBER FIELD ---
                 _buildLabel("Mobile Number"),
@@ -302,14 +316,7 @@ class _LoginState extends State<Login> {
                       ),
                     ),
                     GestureDetector(
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const Signup(),
-                          ),
-                        );
-                      },
+                      onTap: _goToSignup,
                       child: const Text(
                         "Sign Up",
                         style: TextStyle(
