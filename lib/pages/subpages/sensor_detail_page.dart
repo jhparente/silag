@@ -40,7 +40,6 @@ class _SensorDetailPageState extends State<SensorDetailPage>
   bool _isRefreshing = false;
   double? _userLat;
   double? _userLng;
-  TabController? _tabController;
 
   @override
   void initState() {
@@ -57,7 +56,6 @@ class _SensorDetailPageState extends State<SensorDetailPage>
 
   @override
   void dispose() {
-    _tabController?.dispose();
     super.dispose();
   }
 
@@ -93,6 +91,7 @@ class _SensorDetailPageState extends State<SensorDetailPage>
         setState(() {
           _sensor = found;
           _hydrographFuture = SensorService().fetchSensorHydrograph(found.id);
+          _cctvFuture = SensorService().fetchSensorCctv(found.id);
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -148,21 +147,12 @@ class _SensorDetailPageState extends State<SensorDetailPage>
     return FutureBuilder<SensorCctvResponse>(
       future: _cctvFuture,
       builder: (context, cctvSnapshot) {
-        final cctvReady =
-            cctvSnapshot.connectionState == ConnectionState.done;
-        final hasCctv = cctvReady &&
-            cctvSnapshot.data?.cctvConfig.cctvEnabled == true;
+        final cctvConfig = cctvSnapshot.data?.cctvConfig ?? _sensor.cctvConfig;
+        final hasCctv = (cctvConfig != null && cctvConfig.isAvailable) ||
+            _sensor.hasCctv ||
+            (cctvSnapshot.hasData && cctvSnapshot.data!.cctvConfig.isAvailable);
 
-        // Build or rebuild the TabController only when CCTV status is known
-        final tabCount = hasCctv ? 2 : 1;
-        if (_tabController == null ||
-            _tabController!.length != tabCount) {
-          _tabController?.dispose();
-          _tabController =
-              TabController(length: tabCount, vsync: this);
-        }
-
-        return Scaffold(
+        final scaffold = Scaffold(
           backgroundColor: const Color(0xFF070D1E),
           appBar: AppBar(
             backgroundColor: const Color(0xFF0A1227),
@@ -217,7 +207,6 @@ class _SensorDetailPageState extends State<SensorDetailPage>
             ],
             bottom: hasCctv
                 ? TabBar(
-                    controller: _tabController,
                     labelColor: Colors.white,
                     unselectedLabelColor: Colors.white54,
                     labelStyle: const TextStyle(
@@ -239,12 +228,12 @@ class _SensorDetailPageState extends State<SensorDetailPage>
                     ),
                     tabs: const [
                       Tab(
-                        icon: Icon(Icons.bar_chart_rounded, size: 18),
-                        text: 'Overview',
+                        icon: Icon(Icons.sensors_rounded, size: 18),
+                        text: 'Sensor Status',
                       ),
                       Tab(
                         icon: Icon(Icons.videocam_rounded, size: 18),
-                        text: 'Live Camera',
+                        text: 'CCTV Camera',
                       ),
                     ],
                   )
@@ -259,22 +248,28 @@ class _SensorDetailPageState extends State<SensorDetailPage>
           body: SafeArea(
             child: hasCctv
                 ? TabBarView(
-                    controller: _tabController,
                     children: [
-                      // Tab 1: Overview (existing scroll content)
+                      // Tab 1: Sensor Status (existing scroll content)
                       _buildOverviewContent(template, activeWaterLevel),
 
-                      // Tab 2: Live Camera
+                      // Tab 2: Live CCTV Camera
                       SensorCameraTab(
                         sensorId: _sensor.id,
-                        cctvConfig:
-                            cctvSnapshot.data!.cctvConfig,
+                        cctvConfig: cctvConfig ?? CctvConfig.disabled(),
                       ),
                     ],
                   )
                 : _buildOverviewContent(template, activeWaterLevel),
           ),
         );
+
+        if (hasCctv) {
+          return DefaultTabController(
+            length: 2,
+            child: scaffold,
+          );
+        }
+        return scaffold;
       },
     );
   }

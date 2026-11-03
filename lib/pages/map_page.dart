@@ -245,7 +245,10 @@ class _MapPageState extends State<MapPage> {
       ),
       backgroundColor: Colors.white,
       builder: (ctx) {
-        return Padding(
+        final isLandscape =
+            MediaQuery.of(ctx).orientation == Orientation.landscape;
+
+        final content = Padding(
           padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(ctx).padding.bottom + 20),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -365,6 +368,8 @@ class _MapPageState extends State<MapPage> {
             ],
           ),
         );
+
+        return isLandscape ? SingleChildScrollView(child: content) : content;
       },
     );
   }
@@ -392,7 +397,10 @@ class _MapPageState extends State<MapPage> {
       ),
       backgroundColor: Colors.white,
       builder: (ctx) {
-        return Padding(
+        final isLandscape =
+            MediaQuery.of(ctx).orientation == Orientation.landscape;
+
+        final content = Padding(
           padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(ctx).padding.bottom + 20),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -606,6 +614,8 @@ class _MapPageState extends State<MapPage> {
             ],
           ),
         );
+
+        return isLandscape ? SingleChildScrollView(child: content) : content;
       },
     ).whenComplete(() {
       if (mounted) setState(() => _selectedSensorId = null);
@@ -628,18 +638,22 @@ class _MapPageState extends State<MapPage> {
         foregroundColor: const Color(0xFF101C45),
         elevation: 0,
         surfaceTintColor: Colors.transparent,
-        title: const Row(
+        toolbarHeight: MediaQuery.of(context).orientation == Orientation.landscape
+            ? 38.0
+            : kToolbarHeight,
+        title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.map_rounded, color: Color(0xFF101C45), size: 22),
-            SizedBox(width: 8),
+            Icon(Icons.map_rounded, color: const Color(0xFF101C45),
+                size: MediaQuery.of(context).orientation == Orientation.landscape ? 14 : 22),
+            const SizedBox(width: 6),
             Text(
               'Interactive Map',
               style: TextStyle(
                 fontFamily: 'Poppins',
-                fontSize: 18,
+                fontSize: MediaQuery.of(context).orientation == Orientation.landscape ? 13 : 18,
                 fontWeight: FontWeight.bold,
-                color: Color(0xFF101C45),
+                color: const Color(0xFF101C45),
               ),
             ),
           ],
@@ -870,107 +884,7 @@ class _MapPageState extends State<MapPage> {
             ),
           ),
 
-          // Floating Quick-Filter Threshold Strip (Always accessible at bottom)
-          Positioned(
-            left: 12,
-            right: 68,
-            bottom: 20,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.94),
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.10),
-                    blurRadius: 10,
-                    offset: const Offset(0, 3),
-                  ),
-                ],
-              ),
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                physics: const BouncingScrollPhysics(),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _buildQuickThresholdChip(
-                      label: 'Safe',
-                      sublabel: '<1ft',
-                      color: FloodLevelTemplate.level0.waterColor,
-                      count: _level0Count,
-                      isActive: _showLevel0,
-                      onTap: () => setState(() => _showLevel0 = !_showLevel0),
-                    ),
-                    const SizedBox(width: 6),
-                    _buildQuickThresholdChip(
-                      label: 'L1 Low',
-                      sublabel: '1–2ft',
-                      color: FloodLevelTemplate.level1.waterColor,
-                      count: _level1Count,
-                      isActive: _showLevel1,
-                      onTap: () => setState(() => _showLevel1 = !_showLevel1),
-                    ),
-                    const SizedBox(width: 6),
-                    _buildQuickThresholdChip(
-                      label: 'L2 High',
-                      sublabel: '2–3ft',
-                      color: FloodLevelTemplate.level2.waterColor,
-                      count: _level2Count,
-                      isActive: _showLevel2,
-                      onTap: () => setState(() => _showLevel2 = !_showLevel2),
-                    ),
-                    const SizedBox(width: 6),
-                    _buildQuickThresholdChip(
-                      label: 'L3 Critical',
-                      sublabel: '3–4ft',
-                      color: FloodLevelTemplate.level3.waterColor,
-                      count: _level3Count,
-                      isActive: _showLevel3,
-                      onTap: () => setState(() => _showLevel3 = !_showLevel3),
-                    ),
-                    const SizedBox(width: 6),
-                    _buildQuickThresholdChip(
-                      label: 'L4 Severe',
-                      sublabel: '4–5ft',
-                      color: FloodLevelTemplate.level4.waterColor,
-                      count: _level4Count,
-                      isActive: _showLevel4,
-                      onTap: () => setState(() => _showLevel4 = !_showLevel4),
-                    ),
-                    const SizedBox(width: 6),
-                    _buildQuickThresholdChip(
-                      label: 'L5 Extreme',
-                      sublabel: '5–6ft',
-                      color: FloodLevelTemplate.level5.waterColor,
-                      count: _level5Count,
-                      isActive: _showLevel5,
-                      onTap: () => setState(() => _showLevel5 = !_showLevel5),
-                    ),
-                    const SizedBox(width: 6),
-                    _buildQuickThresholdChip(
-                      label: 'L6 Dangerous',
-                      sublabel: '6–7ft',
-                      color: FloodLevelTemplate.level6.waterColor,
-                      count: _level6Count,
-                      isActive: _showLevel6,
-                      onTap: () => setState(() => _showLevel6 = !_showLevel6),
-                    ),
-                    const SizedBox(width: 6),
-                    _buildQuickThresholdChip(
-                      label: 'L7 Catastrophic',
-                      sublabel: '7ft+',
-                      color: FloodLevelTemplate.level7.waterColor,
-                      count: _level7Count,
-                      isActive: _showLevel7,
-                      onTap: () => setState(() => _showLevel7 = !_showLevel7),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
+
 
           // Collapsed quick button
           if (!_showLegend)
@@ -1301,64 +1215,7 @@ class _MapPageState extends State<MapPage> {
     );
   }
 
-  Widget _buildQuickThresholdChip({
-    required String label,
-    required String sublabel,
-    required Color color,
-    required int count,
-    required bool isActive,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-        decoration: BoxDecoration(
-          color: isActive ? color.withValues(alpha: 0.14) : Colors.grey.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isActive ? color : const Color(0xFFCBD5E1),
-            width: isActive ? 1.4 : 1.0,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 8,
-              height: 8,
-              decoration: BoxDecoration(
-                color: isActive ? color : Colors.grey,
-                shape: BoxShape.circle,
-              ),
-            ),
-            const SizedBox(width: 5),
-            Text(
-              label,
-              style: TextStyle(
-                fontFamily: 'Poppins',
-                fontSize: 10.5,
-                fontWeight: FontWeight.bold,
-                color: isActive ? const Color(0xFF0F172A) : const Color(0xFF94A3B8),
-              ),
-            ),
-            const SizedBox(width: 4),
-            Text(
-              '($count)',
-              style: TextStyle(
-                fontFamily: 'Poppins',
-                fontSize: 9.5,
-                fontWeight: FontWeight.w600,
-                color: isActive ? color : const Color(0xFF94A3B8),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+
 
   Widget _buildThresholdToggleRow({
     required int level,

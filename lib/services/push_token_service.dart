@@ -16,15 +16,29 @@ class PushTokenService {
   final _messaging = FirebaseMessaging.instance;
 
   Future<void> initialize() async {
-    await _messaging.requestPermission(alert: true, badge: true, sound: true);
-    await registerTokenIfLoggedIn();
+    try {
+      await _messaging.requestPermission(alert: true, badge: true, sound: true);
+    } catch (_) {}
+    try {
+      await registerTokenIfLoggedIn();
+    } catch (_) {}
     _messaging.onTokenRefresh.listen((token) {
       registerTokenIfLoggedIn(tokenOverride: token);
     });
   }
 
   Future<void> registerTokenIfLoggedIn({String? tokenOverride}) async {
-    final token = tokenOverride ?? await _messaging.getToken();
+    String? token;
+    try {
+      // Give getToken() a maximum of 8 seconds to avoid blocking startup
+      token = tokenOverride ??
+          await _messaging.getToken().timeout(
+            const Duration(seconds: 8),
+            onTimeout: () => null,
+          );
+    } catch (_) {
+      return;
+    }
     if (token == null || token.isEmpty) return;
 
     final jwt = await _storage.read(key: 'jwt_token');

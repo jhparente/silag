@@ -29,6 +29,9 @@ class _SensorCameraTabState extends State<SensorCameraTab>
   bool _hasError = false;
   String? _errorMessage;
 
+  /// True only when a stream is successfully playing.
+  bool get _isStreamOnline => !_isInitializing && !_hasError && _chewieController != null;
+
   @override
   bool get wantKeepAlive => true;
 
@@ -40,18 +43,60 @@ class _SensorCameraTabState extends State<SensorCameraTab>
 
   String? get _streamUrl {
     final cfg = widget.cctvConfig;
-    // Prefer explicit stream_url, then fallback_hls_url,
-    // then construct the MediaMTX HLS URL from the backend host + stream_path
-    if (cfg.streamUrl != null && cfg.streamUrl!.isNotEmpty) {
-      return cfg.streamUrl;
-    }
-    if (cfg.fallbackHlsUrl != null && cfg.fallbackHlsUrl!.isNotEmpty) {
-      return cfg.fallbackHlsUrl;
-    }
-    // MediaMTX default: host:8888/{streamPath}/index.m3u8
     final path = cfg.streamPath ?? widget.sensorId;
+
+    // ── Priority 1: explicit HLS fallback URL (e.g. separate Cloudflare HLS tunnel) ──
+    if (cfg.fallbackHlsUrl != null && cfg.fallbackHlsUrl!.isNotEmpty) {
+      return _normalizeUrl(cfg.fallbackHlsUrl!);
+    }
+
+    // ── Priority 2: derive HLS from stream_url ──────────────────────────────────────
+    // stream_url stores the WHEP/WebRTC base path
+    // (e.g. "https://<tunnel>.trycloudflare.com/SN-GEN-001").
+    // The web player appends "/whep" for WebRTC; for mobile we need HLS on port 8888.
+    if (cfg.streamUrl != null && cfg.streamUrl!.isNotEmpty) {
+      final uri = Uri.tryParse(cfg.streamUrl!);
+      if (uri != null) {
+        // Case A: stream_url explicitly uses port 8889 (MediaMTX WHEP port)
+        // → switch to port 8888 and append /index.m3u8
+        if (uri.port == 8889) {
+          final hlsUri = uri.replace(
+            port: 8888,
+            path: uri.path.endsWith('/')
+                ? '${uri.path}index.m3u8'
+                : '${uri.path}/index.m3u8',
+          );
+          return _normalizeUrl(hlsUri.toString());
+        }
+
+        // Case B: stream_url uses default port (443/80) — it's the Cloudflare tunnel.
+        // Cloudflare only exposes one port per tunnel, so a single stream_url is not
+        // directly usable for HLS. Skip it and fall through to the last-resort fallback.
+        // The correct fix is to set fallback_hls_url in Supabase with the HLS tunnel URL.
+      }
+    }
+
+    // ── Priority 3 (last resort): construct from API host ───────────────────────────
+    // This works only in local dev (when ApiConfig.host points to localhost or LAN IP).
+    // It will NOT work on Railway production since Railway doesn't expose port 8888.
     final baseHost = ApiConfig.host.replaceAll(RegExp(r':(\d+)$'), '');
-    return '$baseHost:8888/$path/index.m3u8';
+    return _normalizeUrl('$baseHost:8888/$path/index.m3u8');
+  }
+
+  String _normalizeUrl(String rawUrl) {
+    if (!rawUrl.contains('localhost') && !rawUrl.contains('127.0.0.1')) {
+      return rawUrl;
+    }
+    final hostUri = Uri.tryParse(ApiConfig.host);
+    if (hostUri != null &&
+        hostUri.host.isNotEmpty &&
+        hostUri.host != 'localhost' &&
+        hostUri.host != '127.0.0.1') {
+      return rawUrl
+          .replaceFirst('localhost', hostUri.host)
+          .replaceFirst('127.0.0.1', hostUri.host);
+    }
+    return rawUrl;
   }
 
   Future<void> _initPlayer() async {
@@ -67,7 +112,7 @@ class _SensorCameraTabState extends State<SensorCameraTab>
         setState(() {
           _isInitializing = false;
           _hasError = true;
-          _errorMessage = 'No stream URL configured for this sensor.';
+          _errorMessage = 'No stream address is configured for this camera.';
         });
       }
       return;
@@ -110,10 +155,31 @@ class _SensorCameraTabState extends State<SensorCameraTab>
         setState(() {
           _isInitializing = false;
           _hasError = true;
-          _errorMessage = 'Failed to connect to camera stream.\n${e.toString().split('\n').first}';
+          _errorMessage = _friendlyError(e);
         });
       }
     }
+  }
+
+  /// Converts raw video player / platform exceptions into readable messages.
+  String _friendlyError(Object e) {
+    final raw = e.toString().toLowerCase();
+    if (raw.contains('source error') ||
+        raw.contains('failed to connect') ||
+        raw.contains('connection refused') ||
+        raw.contains('network')) {
+      return 'Cannot reach the camera stream.\nMake sure the camera is powered on and connected to the network.';
+    }
+    if (raw.contains('404') || raw.contains('not found')) {
+      return 'Stream not found on the server.\nThe camera may not be broadcasting yet.';
+    }
+    if (raw.contains('timeout')) {
+      return 'Connection timed out.\nThe camera is taking too long to respond.';
+    }
+    if (raw.contains('format') || raw.contains('unsupported')) {
+      return 'Unsupported video format.\nThis device may not support the camera\'s stream type.';
+    }
+    return 'Unable to load the camera stream.\nPlease check that the camera is online and try again.';
   }
 
   @override
@@ -154,10 +220,14 @@ class _SensorCameraTabState extends State<SensorCameraTab>
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(16),
-                child: AspectRatio(
-                  aspectRatio: 16 / 9,
-                  child: _buildVideoArea(),
-                ),
+                // Use AspectRatio only for the video player & loading state;
+                // the error state gets free height to avoid overflow.
+                child: (_isInitializing || (!_hasError && _chewieController != null))
+                    ? AspectRatio(
+                        aspectRatio: 16 / 9,
+                        child: _buildVideoArea(),
+                      )
+                    : _buildVideoArea(),
               ),
             ),
 
@@ -173,7 +243,8 @@ class _SensorCameraTabState extends State<SensorCameraTab>
 
   Widget _buildCameraInfoHeader() {
     final cfg = widget.cctvConfig;
-    final isOnline = cfg.isOnline ?? false;
+    // Show ONLINE only when the stream is actually playing, not just the DB flag.
+    final isOnline = _isStreamOnline;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
@@ -393,6 +464,12 @@ class _SensorCameraTabState extends State<SensorCameraTab>
           _buildDetailRow('Protocol', _resolveProtocol(resolvedUrl)),
           _buildDetailRow('Resolution', cfg.resolution ?? '720p'),
           _buildDetailRow('Vendor', cfg.cameraVendor ?? 'IP Camera'),
+          _buildDetailRow(
+            'Stream URL',
+            resolvedUrl.length > 50
+                ? '${resolvedUrl.substring(0, 50)}…'
+                : resolvedUrl,
+          ),
         ],
       ),
     );

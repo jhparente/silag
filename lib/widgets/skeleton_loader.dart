@@ -233,6 +233,7 @@ class EvacuationCenterSkeleton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
+      width: double.infinity,
       margin: const EdgeInsets.only(bottom: 15),
       decoration: BoxDecoration(
         color: const Color(0xFF1A2755),

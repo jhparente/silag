@@ -199,7 +199,11 @@ class _LandingPageState extends State<LandingPage> {
           const SizedBox(height: 18),
 
           // Animated IoT hardware & water oscillation
-          const SensorHero(size: 68),
+          const SensorHero(
+            size: 68,
+            logoAsset: 'icons/Light Mode SILAG transparent.png',
+            isDarkBackground: true,
+          ),
           const SizedBox(height: 8),
 
           const Text(

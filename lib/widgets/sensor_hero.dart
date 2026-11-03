@@ -14,7 +14,15 @@ import 'package:flutter/material.dart';
 /// The SILAG acronym logo is rendered with Image.asset beneath.
 class SensorHero extends StatefulWidget {
   final double size;
-  const SensorHero({super.key, this.size = 120});
+  final String? logoAsset;
+  final bool isDarkBackground;
+
+  const SensorHero({
+    super.key,
+    this.size = 120,
+    this.logoAsset,
+    this.isDarkBackground = false,
+  });
 
   @override
   State<SensorHero> createState() => _SensorHeroState();
@@ -93,7 +101,10 @@ class _SensorHeroState extends State<SensorHero>
 
         // ── SILAG logo acronym image ──
         Image.asset(
-          'icons/Transparent SILAG LOGO.png',
+          widget.logoAsset ??
+              (widget.isDarkBackground
+                  ? 'icons/Light Mode SILAG transparent.png'
+                  : 'icons/Transparent SILAG LOGO.png'),
           height: 52,
           fit: BoxFit.contain,
         ),

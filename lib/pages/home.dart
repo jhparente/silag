@@ -1298,32 +1298,41 @@ class _HomePageState extends State<HomePage> {
   }
 
 
-  // App Bar Widget
+  // App Bar Widget — adapts to landscape orientation (smaller height & fonts)
   AppBar appBar(String formattedDate) {
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
+    final toolbarH = isLandscape ? 38.0 : 80.0;
+    final titleFontSize = isLandscape ? 13.0 : 20.0;
+    final dateFontSize = isLandscape ? 11.0 : 15.0;
+    final iconBoxSize = isLandscape ? 26.0 : 35.0;
+    final iconSize = isLandscape ? 15.0 : 20.0;
+
     return AppBar(
       backgroundColor: Colors.transparent,
       elevation: 0.0,
-      toolbarHeight: 80.0,
+      toolbarHeight: toolbarH,
       title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             _barangayName ?? 'Loading...',
-            style: const TextStyle(
+            style: TextStyle(
               fontFamily: 'Poppins',
               fontWeight: FontWeight.bold,
-              fontSize: 20,
-              color: Color(0xFF101C45),
+              fontSize: titleFontSize,
+              color: const Color(0xFF101C45),
             ),
           ),
-          Text(
-            formattedDate,
-            style: const TextStyle(
-              fontSize: 15,
-              color: Color(0xFF101C45),
-              fontFamily: 'Poppins',
+          if (!isLandscape)
+            Text(
+              formattedDate,
+              style: TextStyle(
+                fontSize: dateFontSize,
+                color: const Color(0xFF101C45),
+                fontFamily: 'Poppins',
+              ),
             ),
-          ),
         ],
       ),
       actions: [
@@ -1337,13 +1346,14 @@ class _HomePageState extends State<HomePage> {
                 children: [
                   Container(
                     alignment: Alignment.center,
-                    height: 35,
-                    width: 35,
+                    height: iconBoxSize,
+                    width: iconBoxSize,
                     decoration: BoxDecoration(
                       color: const Color(0xFFCCCCCC).withOpacity(0.1),
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: const Icon(Icons.notifications_outlined, color: Color(0xFF101C45), size: 20),
+                    child: Icon(Icons.notifications_outlined,
+                        color: const Color(0xFF101C45), size: iconSize),
                   ),
                   if (_unreadCount > 0)
                     Positioned(
@@ -1359,7 +1369,10 @@ class _HomePageState extends State<HomePage> {
                         child: Center(
                           child: Text(
                             _unreadCount > 9 ? '9+' : '$_unreadCount',
-                            style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold),
                           ),
                         ),
                       ),
@@ -1378,14 +1391,15 @@ class _HomePageState extends State<HomePage> {
               },
               child: Container(
                 alignment: Alignment.center,
-                height: 35,
-                width: 35,
+                height: iconBoxSize,
+                width: iconBoxSize,
                 decoration: BoxDecoration(
                   color: const Color(0xFFCCCCCC).withOpacity(0.1),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 padding: const EdgeInsets.all(1),
-                child: const Icon(Icons.person, color: Color(0xFF101C45), size: 20),
+                child: Icon(Icons.person,
+                    color: const Color(0xFF101C45), size: iconSize),
               ),
             ),
             const SizedBox(width: 15),

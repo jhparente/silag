@@ -512,6 +512,38 @@ class _AllSensorsPageState extends State<AllSensorsPage> {
                           ],
                         ),
                       ),
+                      if (sensor.hasCctv) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF38BDF8).withOpacity(0.18),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(
+                              color: const Color(0xFF38BDF8).withOpacity(0.4),
+                              width: 0.8,
+                            ),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.videocam_rounded,
+                                  size: 11, color: Color(0xFF38BDF8)),
+                              SizedBox(width: 3),
+                              Text(
+                                'CCTV',
+                                style: TextStyle(
+                                  color: Color(0xFF38BDF8),
+                                  fontSize: 9.5,
+                                  fontWeight: FontWeight.bold,
+                                  fontFamily: 'Poppins',
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                   const SizedBox(height: 2),

@@ -18,10 +18,18 @@ Future<void> main() async {
 
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
-  await LocalNotificationService().initialize();
-  await LocalNotificationService().requestPermissions();
+  // Initialize local notifications (best-effort, non-blocking on error)
+  try {
+    await LocalNotificationService().initialize();
+    await LocalNotificationService().requestPermissions();
+  } catch (_) {}
 
-  await PushTokenService().initialize();
+  // Register FCM push token — wrapped so any Firebase Messaging failure
+  // (e.g. getToken timeout, missing google-services config) does NOT
+  // block startup and cause a blank / black screen.
+  try {
+    await PushTokenService().initialize();
+  } catch (_) {}
 
   final existingToken = await AuthService().getToken();
   if (existingToken != null && existingToken.isNotEmpty) {

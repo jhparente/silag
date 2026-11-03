@@ -407,6 +407,9 @@ class _EvacuationMapPageState extends State<EvacuationMapPage>
 
   @override
   Widget build(BuildContext context) {
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
+    final screenWidth = MediaQuery.of(context).size.width;
     final dest = LatLng(widget.destLatitude, widget.destLongitude);
     final center = _userLocation ?? dest;
 
@@ -644,50 +647,71 @@ class _EvacuationMapPageState extends State<EvacuationMapPage>
 
                     if (_steps.isNotEmpty && _currentStepIndex < _steps.length)
                       Positioned(
-                        top: 50,
-                        left: 16,
-                        right: 16,
-                        child: Container(
-                          padding: const EdgeInsets.all(20),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF00C97A),
-                            borderRadius: BorderRadius.circular(20),
-                            boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 10, offset: Offset(0, 5))],
+                        top: isLandscape
+                            ? math.max(MediaQuery.of(context).padding.top, 8.0)
+                            : 50.0,
+                        left: isLandscape
+                            ? math.max(MediaQuery.of(context).padding.left + 8.0, 16.0)
+                            : 16.0,
+                        right: isLandscape ? null : 16.0,
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            maxWidth: isLandscape ? 280.0 : double.infinity,
                           ),
-                          child: Row(
-                            children: [
-                              Icon(
-                                _getModifierIcon(_steps[_currentStepIndex].modifier, _steps[_currentStepIndex].type),
-                                color: Colors.white,
-                                size: 42,
-                              ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      _formatDistance(_haversineKm(_userLocation!, _steps[_currentStepIndex].location)),
-                                      style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold, fontFamily: 'Poppins'),
-                                    ),
-                                    Text(
-                                      _steps[_currentStepIndex].instruction,
-                                      style: const TextStyle(color: Colors.white, fontSize: 16, fontFamily: 'Poppins'),
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ],
+                          child: Container(
+                            padding: isLandscape
+                                ? const EdgeInsets.symmetric(horizontal: 16, vertical: 10)
+                                : const EdgeInsets.all(20),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF00C97A),
+                              borderRadius: BorderRadius.circular(isLandscape ? 14 : 20),
+                              boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 10, offset: Offset(0, 5))],
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  _getModifierIcon(_steps[_currentStepIndex].modifier, _steps[_currentStepIndex].type),
+                                  color: Colors.white,
+                                  size: isLandscape ? 28 : 42,
                                 ),
-                              ),
-                            ],
+                                SizedBox(width: isLandscape ? 12 : 16),
+                                Flexible(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        _formatDistance(_haversineKm(_userLocation!, _steps[_currentStepIndex].location)),
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: isLandscape ? 17 : 24,
+                                          fontWeight: FontWeight.bold,
+                                          fontFamily: 'Poppins',
+                                        ),
+                                      ),
+                                      Text(
+                                        _steps[_currentStepIndex].instruction,
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: isLandscape ? 13 : 16,
+                                          fontFamily: 'Poppins',
+                                        ),
+                                        maxLines: isLandscape ? 1 : 2,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
 
                     if (_isLoadingRoute)
                       Positioned(
-                        top: 140,
+                        top: isLandscape ? 56 : 140,
                         left: 0,
                         right: 0,
                         child: Center(
@@ -711,22 +735,26 @@ class _EvacuationMapPageState extends State<EvacuationMapPage>
                       ),
 
                     Positioned(
-                      bottom: 120,
-                      right: 16,
+                      bottom: isLandscape ? 56 : 120,
+                      right: isLandscape ? 12 : 16,
                       child: Column(
                         children: [
                           FloatingActionButton.small(
                             heroTag: 'overview',
                             backgroundColor: Colors.white,
                             onPressed: _fitBounds,
-                            child: const Icon(Icons.map, color: Color(0xFF334155)),
+                            child: Icon(Icons.map,
+                                size: isLandscape ? 18 : 24,
+                                color: const Color(0xFF334155)),
                           ),
                           const SizedBox(height: 8),
-                          FloatingActionButton(
+                          FloatingActionButton.small(
                             heroTag: 'recenter',
                             backgroundColor: _isFollowing ? const Color(0xFF00C97A) : Colors.white,
                             onPressed: _recenter,
-                            child: Icon(Icons.my_location, color: _isFollowing ? Colors.white : const Color(0xFF00C97A)),
+                            child: Icon(Icons.my_location,
+                                size: isLandscape ? 18 : 24,
+                                color: _isFollowing ? Colors.white : const Color(0xFF00C97A)),
                           ),
                         ],
                       ),
@@ -738,14 +766,18 @@ class _EvacuationMapPageState extends State<EvacuationMapPage>
                       right: 0,
                       child: Container(
                         padding: EdgeInsets.fromLTRB(
-                          24,
-                          16,
-                          24,
-                          math.max(MediaQuery.of(context).padding.bottom + 12, 28),
+                          isLandscape ? 20 : 24,
+                          isLandscape ? 6 : 16,
+                          isLandscape ? 20 : 24,
+                          isLandscape
+                              ? math.max(MediaQuery.of(context).padding.bottom, 6.0)
+                              : math.max(MediaQuery.of(context).padding.bottom + 12, 28),
                         ),
                         decoration: BoxDecoration(
                           color: Colors.white,
-                          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                          borderRadius: BorderRadius.vertical(
+                            top: Radius.circular(isLandscape ? 16 : 24),
+                          ),
                           boxShadow: [
                             BoxShadow(
                               color: Colors.black.withValues(alpha: 0.08),
@@ -763,9 +795,9 @@ class _EvacuationMapPageState extends State<EvacuationMapPage>
                                 children: [
                                   Text(
                                     _distanceText ?? '-- km',
-                                    style: const TextStyle(
-                                      color: Color(0xFF00C97A),
-                                      fontSize: 22,
+                                    style: TextStyle(
+                                      color: const Color(0xFF00C97A),
+                                      fontSize: isLandscape ? 15 : 22,
                                       fontWeight: FontWeight.bold,
                                       fontFamily: 'Poppins',
                                     ),
@@ -773,13 +805,13 @@ class _EvacuationMapPageState extends State<EvacuationMapPage>
                                   const SizedBox(height: 2),
                                   Text(
                                     'To ${widget.destName}',
-                                    style: const TextStyle(
-                                      color: Color(0xFF64748B),
-                                      fontSize: 13,
+                                    style: TextStyle(
+                                      color: const Color(0xFF64748B),
+                                      fontSize: isLandscape ? 11 : 13,
                                       fontFamily: 'Poppins',
-                                      height: 1.3,
+                                      height: 1.2,
                                     ),
-                                    maxLines: 3,
+                                    maxLines: isLandscape ? 1 : 3,
                                     overflow: TextOverflow.ellipsis,
                                     softWrap: true,
                                   ),
@@ -793,14 +825,19 @@ class _EvacuationMapPageState extends State<EvacuationMapPage>
                                 backgroundColor: Colors.redAccent,
                                 foregroundColor: Colors.white,
                                 elevation: 0,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(isLandscape ? 8 : 12),
+                                ),
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: isLandscape ? 16 : 24,
+                                  vertical: isLandscape ? 8 : 14,
+                                ),
                               ),
-                              child: const Text(
+                              child: Text(
                                 'Exit',
                                 style: TextStyle(
                                   color: Colors.white,
-                                  fontSize: 16,
+                                  fontSize: isLandscape ? 13 : 16,
                                   fontWeight: FontWeight.bold,
                                   fontFamily: 'Poppins',
                                 ),
@@ -809,8 +846,7 @@ class _EvacuationMapPageState extends State<EvacuationMapPage>
                           ],
                         ),
                       ),
-                    ),
-                  ],
+                    ),                  ],
                 ),
     );
   }

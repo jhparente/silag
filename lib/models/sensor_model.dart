@@ -1,4 +1,5 @@
 import 'flood_level_template.dart';
+import 'cctv_model.dart';
 
 // All sensors are ultrasonic — the float sensor type was removed from the database.
 enum SensorType { ultrasonic }
@@ -36,6 +37,10 @@ class SensorModel {
   final int? signalStrength;
   final String? rssiValue;
 
+  /// Optional paired CCTV surveillance camera
+  final CctvConfig? cctvConfig;
+  bool get hasCctv => cctvConfig != null && cctvConfig!.isAvailable;
+
   // Private constructor to enforce immutability
   SensorModel._internal({
     required this.id,
@@ -55,6 +60,7 @@ class SensorModel {
     this.batteryLevel,
     this.signalStrength,
     this.rssiValue,
+    this.cctvConfig,
   });
 
   /// Factory constructor — all sensors are treated as ultrasonic.
@@ -74,6 +80,7 @@ class SensorModel {
     int? batteryLevel,
     int? signalStrength,
     String? rssiValue,
+    CctvConfig? cctvConfig,
     bool isRising = false,
   }) {
     return SensorModel._internal(
@@ -134,6 +141,12 @@ class SensorModel {
     final rssiValue = (json['rssi_value'] ?? json['rssi'])?.toString();
     final isRising = json['is_rising'] == true;
 
+    CctvConfig? cctvConfig;
+    final rawCctv = json['cctv_config'];
+    if (rawCctv is Map<String, dynamic>) {
+      cctvConfig = CctvConfig.fromJson(rawCctv);
+    }
+
     return SensorModel.ultrasonic(
       id: id,
       name: name,
@@ -150,6 +163,7 @@ class SensorModel {
       batteryLevel: batteryLevel,
       signalStrength: signalStrength,
       rssiValue: rssiValue,
+      cctvConfig: cctvConfig,
       isRising: isRising,
     );
   }

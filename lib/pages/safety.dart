@@ -1005,6 +1005,7 @@ class _SafetyPageState extends State<SafetyPage> {
             ? '1 km'
             : '2 km';
     return Container(
+      width: double.infinity,
       margin: const EdgeInsets.symmetric(vertical: 8),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -1067,6 +1068,7 @@ class _SafetyPageState extends State<SafetyPage> {
 
   Widget _buildEvacuationCenterCard(EvacuationModel site) {
     return Container(
+      width: double.infinity,
       margin: const EdgeInsets.only(bottom: 15),
       decoration: BoxDecoration(
         color: const Color(0xFF101C45),
@@ -1639,16 +1641,19 @@ class _SafetyPageState extends State<SafetyPage> {
   }
 
   AppBar appBar() {
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
     return AppBar(
       backgroundColor: Colors.white,
       elevation: 0,
       centerTitle: true,
-      title: const Text(
+      toolbarHeight: isLandscape ? 38.0 : kToolbarHeight,
+      title: Text(
         "Safety & Resources",
         style: TextStyle(
-          color: Color(0xFF101C45),
+          color: const Color(0xFF101C45),
           fontWeight: FontWeight.bold,
-          fontSize: 23,
+          fontSize: isLandscape ? 14.0 : 23.0,
           fontFamily: 'Poppins',
         ),
       ),
@@ -1658,6 +1663,7 @@ class _SafetyPageState extends State<SafetyPage> {
   /// Friendly error card shown when the backend / network is unreachable.
   Widget _buildConnectionErrorCard() {
     return Container(
+      width: double.infinity,
       margin: const EdgeInsets.symmetric(vertical: 8),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
